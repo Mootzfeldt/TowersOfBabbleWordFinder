@@ -1,0 +1,2245 @@
+{
+  "units": [
+    {
+      "word": "shit",
+      "kind": "TOWER",
+      "budget": 29.4,
+      "scrabble": 7,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 95,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "shitty",
+      "kind": "TOWER",
+      "budget": 75.6,
+      "scrabble": 12,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 180,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "bullshit",
+      "kind": "TOWER",
+      "budget": 109.2,
+      "scrabble": 13,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 230,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "bullshitter",
+      "kind": "TOWER",
+      "budget": 184.8,
+      "scrabble": 16,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 325,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "horseshit",
+      "kind": "TOWER",
+      "budget": 141.75,
+      "scrabble": 15,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 270,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "batshit",
+      "kind": "TOWER",
+      "budget": 88.2,
+      "scrabble": 12,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 200,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "shithead",
+      "kind": "TOWER",
+      "budget": 126,
+      "scrabble": 15,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 250,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "shitface",
+      "kind": "TOWER",
+      "budget": 134.4,
+      "scrabble": 16,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 260,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "shitbag",
+      "kind": "TOWER",
+      "budget": 95.55,
+      "scrabble": 13,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 210,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "shitshow",
+      "kind": "TOWER",
+      "budget": 142.8,
+      "scrabble": 17,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 275,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "fuck",
+      "kind": "TOWER",
+      "budget": 54.6,
+      "scrabble": 13,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 145,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "fucked",
+      "kind": "TOWER",
+      "budget": 100.8,
+      "scrabble": 16,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 215,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "fucking",
+      "kind": "TOWER",
+      "budget": 124.95,
+      "scrabble": 17,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 250,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "fucker",
+      "kind": "TOWER",
+      "budget": 94.5,
+      "scrabble": 15,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 210,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "fuckface",
+      "kind": "TOWER",
+      "budget": 184.8,
+      "scrabble": 22,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 325,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "fuckwit",
+      "kind": "TOWER",
+      "budget": 139.65,
+      "scrabble": 19,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 270,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "motherfucker",
+      "kind": "TOWER",
+      "budget": 327.6,
+      "scrabble": 26,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 470,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "motherfuckers",
+      "kind": "TOWER",
+      "budget": 368.55,
+      "scrabble": 27,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 510,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "motherfucking",
+      "kind": "TOWER",
+      "budget": 382.2,
+      "scrabble": 28,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 525,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "goddamn",
+      "kind": "TOWER",
+      "budget": 88.2,
+      "scrabble": 12,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 200,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "goddammit",
+      "kind": "TOWER",
+      "budget": 151.2,
+      "scrabble": 16,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 285,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "asshole",
+      "kind": "TOWER",
+      "budget": 73.5,
+      "scrabble": 10,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 175,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "assholes",
+      "kind": "TOWER",
+      "budget": 92.4,
+      "scrabble": 11,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 205,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "asshat",
+      "kind": "TOWER",
+      "budget": 56.7,
+      "scrabble": 9,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 150,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "asshats",
+      "kind": "TOWER",
+      "budget": 73.5,
+      "scrabble": 10,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 175,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "asswipe",
+      "kind": "TOWER",
+      "budget": 88.2,
+      "scrabble": 12,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 200,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "asswipes",
+      "kind": "TOWER",
+      "budget": 109.2,
+      "scrabble": 13,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 230,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "dumbass",
+      "kind": "TOWER",
+      "budget": 88.2,
+      "scrabble": 12,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 200,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "dumbasses",
+      "kind": "TOWER",
+      "budget": 132.3,
+      "scrabble": 14,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 260,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "jackass",
+      "kind": "TOWER",
+      "budget": 147,
+      "scrabble": 20,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 280,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "jackasses",
+      "kind": "TOWER",
+      "budget": 207.9,
+      "scrabble": 22,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 350,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "douchebag",
+      "kind": "TOWER",
+      "budget": 170.1,
+      "scrabble": 18,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 305,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "douchebags",
+      "kind": "TOWER",
+      "budget": 199.5,
+      "scrabble": 19,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 340,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "gigachad",
+      "kind": "TOWER",
+      "budget": 134.4,
+      "scrabble": 16,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 260,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "gigachads",
+      "kind": "TOWER",
+      "budget": 160.65,
+      "scrabble": 17,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 295,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "soyjak",
+      "kind": "TOWER",
+      "budget": 126,
+      "scrabble": 20,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 250,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "soyjaks",
+      "kind": "TOWER",
+      "budget": 154.35,
+      "scrabble": 21,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 290,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "wojak",
+      "kind": "TOWER",
+      "budget": 99.75,
+      "scrabble": 19,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 215,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "wojaks",
+      "kind": "TOWER",
+      "budget": 126,
+      "scrabble": 20,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 250,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "coomer",
+      "kind": "TOWER",
+      "budget": 63,
+      "scrabble": 10,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 160,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "coom",
+      "kind": "TOWER",
+      "budget": 33.6,
+      "scrabble": 8,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 105,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "cooms",
+      "kind": "TOWER",
+      "budget": 47.25,
+      "scrabble": 9,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 130,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "coomers",
+      "kind": "TOWER",
+      "budget": 80.85,
+      "scrabble": 11,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 190,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "goon",
+      "kind": "TOWER",
+      "budget": 21,
+      "scrabble": 5,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 75,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "goons",
+      "kind": "TOWER",
+      "budget": 31.5,
+      "scrabble": 6,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 100,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "gooner",
+      "kind": "TOWER",
+      "budget": 44.1,
+      "scrabble": 7,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 125,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "gooners",
+      "kind": "TOWER",
+      "budget": 58.8,
+      "scrabble": 8,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 150,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "gooning",
+      "kind": "TOWER",
+      "budget": 66.15,
+      "scrabble": 9,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 165,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "sus",
+      "kind": "TOWER",
+      "budget": 9.45,
+      "scrabble": 3,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 45,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "sussy",
+      "kind": "TOWER",
+      "budget": 42,
+      "scrabble": 8,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 120,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "bofa",
+      "kind": "TOWER",
+      "budget": 37.8,
+      "scrabble": 9,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 115,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "ligma",
+      "kind": "TOWER",
+      "budget": 42,
+      "scrabble": 8,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 120,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "sugma",
+      "kind": "TOWER",
+      "budget": 42,
+      "scrabble": 8,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 120,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "mald",
+      "kind": "TOWER",
+      "budget": 29.4,
+      "scrabble": 7,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 95,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "malding",
+      "kind": "TOWER",
+      "budget": 80.85,
+      "scrabble": 11,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 190,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "copium",
+      "kind": "TOWER",
+      "budget": 75.6,
+      "scrabble": 12,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 180,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "maxxing",
+      "kind": "TOWER",
+      "budget": 176.4,
+      "scrabble": 24,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 315,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "delulu",
+      "kind": "TOWER",
+      "budget": 44.1,
+      "scrabble": 7,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 125,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "rizz",
+      "kind": "TOWER",
+      "budget": 92.4,
+      "scrabble": 22,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 205,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "rizzes",
+      "kind": "TOWER",
+      "budget": 151.2,
+      "scrabble": 24,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 285,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "rizzler",
+      "kind": "TOWER",
+      "budget": 183.75,
+      "scrabble": 25,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 325,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "rizzlord",
+      "kind": "TOWER",
+      "budget": 226.8,
+      "scrabble": 27,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 370,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "gyatt",
+      "kind": "TOWER",
+      "budget": 47.25,
+      "scrabble": 9,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 130,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "yeet",
+      "kind": "TOWER",
+      "budget": 29.4,
+      "scrabble": 7,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 95,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "yeets",
+      "kind": "TOWER",
+      "budget": 42,
+      "scrabble": 8,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 120,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "pog",
+      "kind": "TOWER",
+      "budget": 18.9,
+      "scrabble": 6,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 70,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "pogging",
+      "kind": "TOWER",
+      "budget": 88.2,
+      "scrabble": 12,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 200,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "poggers",
+      "kind": "TOWER",
+      "budget": 80.85,
+      "scrabble": 11,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 190,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "pogchamp",
+      "kind": "TOWER",
+      "budget": 168,
+      "scrabble": 20,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 305,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "pogchamps",
+      "kind": "TOWER",
+      "budget": 198.45,
+      "scrabble": 21,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 340,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "uwu",
+      "kind": "TOWER",
+      "budget": 18.9,
+      "scrabble": 6,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 70,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "cunt",
+      "kind": "TOWER",
+      "budget": 25.2,
+      "scrabble": 6,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 85,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "cunts",
+      "kind": "TOWER",
+      "budget": 36.75,
+      "scrabble": 7,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 110,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "cunty",
+      "kind": "TOWER",
+      "budget": 52.5,
+      "scrabble": 10,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 140,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "unc",
+      "kind": "TOWER",
+      "budget": 15.75,
+      "scrabble": 5,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 65,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "bitch",
+      "kind": "TOWER",
+      "budget": 63,
+      "scrabble": 12,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 160,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "bitchy",
+      "kind": "TOWER",
+      "budget": 100.8,
+      "scrabble": 16,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 215,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "bitches",
+      "kind": "TOWER",
+      "budget": 102.9,
+      "scrabble": 14,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 220,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "brainrot",
+      "kind": "TOWER",
+      "budget": 84,
+      "scrabble": 10,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 190,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "bussin",
+      "kind": "TOWER",
+      "budget": 50.4,
+      "scrabble": 8,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 135,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "bussy",
+      "kind": "TOWER",
+      "budget": 52.5,
+      "scrabble": 10,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 140,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "chungus",
+      "kind": "TOWER",
+      "budget": 95.55,
+      "scrabble": 13,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 210,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    },
+    {
+      "word": "chud",
+      "kind": "TOWER",
+      "budget": 42,
+      "scrabble": 10,
+      "damage": 5,
+      "range": 4,
+      "attackInterval": 1,
+      "health": 100,
+      "armor": 1,
+      "targeting": "nearest",
+      "specials": [
+        {
+          "value": 120,
+          "name": "curse"
+        }
+      ],
+      "isCursed": true,
+      "curseEffects": [
+        "base_range",
+        "base_health",
+        "no_healing",
+        "one_mod_slot",
+        "no_nearby_buildings",
+        "no_nearby_resources"
+      ]
+    }
+  ]
+}
