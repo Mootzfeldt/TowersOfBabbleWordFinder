@@ -3731,6 +3731,116 @@ def build_nicegui_app():
     return ui
 
 
+def _hex_to_colorref(hex_color: str) -> int:
+    """Convert #RRGGBB to Win32 COLORREF (0x00BBGGRR)."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return (b << 16) | (g << 8) | r
+
+
+def _apply_windows_titlebar_color(
+    window_title: str,
+    bg_hex: str = "#DDDDDD",
+    text_hex: str = "#111111",
+    timeout: float = 15.0,
+) -> None:
+    """Recolor the native Windows 11 title bar to match the app background."""
+    if sys.platform != "win32":
+        return
+
+    import ctypes
+    from ctypes import wintypes
+    import threading
+    import time
+
+    DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+    DWMWA_CAPTION_COLOR = 35
+    DWMWA_TEXT_COLOR = 36
+
+    SWP_NOSIZE = 0x0001
+    SWP_NOMOVE = 0x0002
+    SWP_NOZORDER = 0x0004
+    SWP_NOACTIVATE = 0x0010
+    SWP_FRAMECHANGED = 0x0020
+
+    user32 = ctypes.windll.user32
+    dwmapi = ctypes.windll.dwmapi
+
+    user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    user32.FindWindowW.restype = wintypes.HWND
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.SetWindowPos.argtypes = [
+        wintypes.HWND,
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.UINT,
+    ]
+    user32.SetWindowPos.restype = wintypes.BOOL
+
+    dwmapi.DwmSetWindowAttribute.argtypes = [
+        wintypes.HWND,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    ]
+    dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
+
+    def worker() -> None:
+        deadline = time.monotonic() + timeout
+        hwnd = None
+        while time.monotonic() < deadline:
+            found = user32.FindWindowW(None, window_title)
+            if found and user32.IsWindowVisible(found):
+                hwnd = found
+                break
+            time.sleep(0.05)
+
+        if not hwnd:
+            return
+
+        # Keep dark minimize/maximize/close icons against the light #DDDDDD bar
+        use_dark = ctypes.c_int(0)
+        dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            ctypes.byref(use_dark),
+            ctypes.sizeof(use_dark),
+        )
+
+        caption_color = wintypes.DWORD(_hex_to_colorref(bg_hex))
+        dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CAPTION_COLOR,
+            ctypes.byref(caption_color),
+            ctypes.sizeof(caption_color),
+        )
+
+        text_color = wintypes.DWORD(_hex_to_colorref(text_hex))
+        dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_TEXT_COLOR,
+            ctypes.byref(text_color),
+            ctypes.sizeof(text_color),
+        )
+
+        # Force an immediate repaint of the title bar
+        user32.SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        )
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def main():
     from nicegui import app
 
@@ -3740,10 +3850,16 @@ def main():
     else:
         print("No units.json found automatically — use the settings menu to load files.")
 
+    window_title = "Towers of Babble — Word Finder"
+    app_bg_color = "#DDDDDD"
+
     ui = build_nicegui_app()
     app.native.window_args["min_size"] = (980, 860)
+    app.native.window_args["background_color"] = app_bg_color
+    _apply_windows_titlebar_color(window_title, bg_hex=app_bg_color, text_hex="#111111")
+
     ui.run(
-        title="Towers of Babble — Word Finder",
+        title=window_title,
         reload=False,
         native=True,
         window_size=(980, 860),
