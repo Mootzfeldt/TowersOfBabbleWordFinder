@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import base64
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import quote_plus
@@ -45,6 +46,7 @@ TOWER_DEFAULTS = {
     "damage": 5.0,
     "range": 4.0,
     "attackInterval": 1.0,
+    "attackSpeed": 2.0,
     "health": 100.0,
     "armor": 1.0,
 }
@@ -142,177 +144,46 @@ DISPLAY_NAMES: Dict[str, str] = {
     "no_nearby_resources": "No Nearby Resources",
 }
 
-# Short badge labels shown when sorting by a stat
-STAT_SHORT_LABELS: Dict[str, str] = {
-    "curse": "CURSE",
-    "damage": "DMG",
-    "dps": "DPS",
-    "dmg_buff_aura": "DMG AURA",
-    "attack_speed": "ATK SPD",
-    "firerate_buff_aura": "SPD AURA",
-    "toughness": "HP",
-    "heal_aura": "HEAL",
-    "armor": "ARM",
-    "armor_buff_aura": "ARM AURA",
-    "crit": "CRIT",
-    "range": "RNG",
-    "burn": "BURN",
-    "burn_aura": "BURN",
-    "poison": "PSN",
-    "slow": "SLOW",
-    "slow_aura": "SLOW AURA",
-    "knockback": "KB",
-    "stun": "STUN",
-    "multishot": "MULTI",
-    "pierce": "PRC",
-    "armor_shred": "SHRED",
-    "splash": "SPLASH",
-    "chain": "CHAIN",
-    "harvest_amount": "AMT",
-    "harvest_speed": "H-SPD",
-    "harvest_rate": "RATE",
-    "harvest_types": "TYPES",
-    "multi_harvest": "M-HARV",
-    "harvest_aura": "H-AURA",
+STAT_FILTERS: List[Tuple[str, str, str, str]] = [
+    ("toughness", "HEALTH", "#2A732E", "#FFFFFF"),
+    ("armor", "ARMOR", "#835C4F", "#FFFFFF"),
+    ("damage", "DAMAGE", "#C22727", "#FFFFFF"),
+    ("attack_speed", "ATTACK SPEED", "#9C2ACC", "#FFFFFF"),
+    ("range", "RANGE", "#1564BE", "#FFFFFF"),
+    ("multishot", "MULTISHOT", "#A44B07", "#FFFFFF"),
+    ("splash", "SPLASH", "#155FD2", "#FFFFFF"),
+    ("chain", "CHAIN", "#7D6100", "#FFFFFF"),
+    ("pierce", "PIERCE", "#C21862", "#FFFFFF"),
+    ("crit", "CRIT", "#AC4500", "#FFFFFF"),
+    ("poison", "POISON", "#237429", "#FFFFFF"),
+    ("slow", "SLOW", "#1564BE", "#FFFFFF"),
+    ("stun", "STUN", "#676900", "#FFFFFF"),
+    ("knockback", "KNOCKBACK", "#BF1871", "#FFFFFF"),
+    ("armor_shred", "ARMOR SHRED", "#A84800", "#FFFFFF"),
+    ("dmg_buff_aura", "DAMAGE AURA", "#C51F1F", "#FFFFFF"),
+    ("firerate_buff_aura", "ATTACK SPEED AURA", "#962AD7", "#FFFFFF"),
+    ("armor_buff_aura", "ARMOR AURA", "#835C50", "#FFFFFF"),
+    ("heal_aura", "HEAL AURA", "#2C732F", "#FFFFFF"),
+    ("slow_aura", "SLOW AURA", "#155FD2", "#FFFFFF"),
+    ("burn_aura", "BURN AURA", "#C22727", "#FFFFFF"),
+    ("harvest_amount", "HARVEST AMOUNT", "#457024", "#FFFFFF"),
+    ("harvest_speed", "HARVEST INTERVAL", "#4E6E2F", "#FFFFFF"),
+    ("multi_harvest", "MULTI HARVEST", "#2A732E", "#FFFFFF"),
+    ("harvest_aura", "HARVEST AURA", "#237429", "#FFFFFF"),
+    ("curse", "CURSE", "#962AD7", "#FFFFFF"),
+]
+STAT_FILTER_BITS: Dict[str, int] = {
+    stat_key: 1 << index
+    for index, (stat_key, _, _, _) in enumerate(STAT_FILTERS)
 }
 
-# Sort-by options per category (Points & Alphabetical on top, then canonical stat order)
-SORT_KEYS_BY_KIND: Dict[str, List[str]] = {
-    "ALL": [
-        "points",
-        "alphabetical",
-        "damage",
-        "dps",
-        "dmg_buff_aura",
-        "attack_speed",
-        "firerate_buff_aura",
-        "toughness",
-        "heal_aura",
-        "armor",
-        "armor_buff_aura",
-        "crit",
-        "range",
-        "burn_aura",
-        "poison",
-        "curse",
-        "slow",
-        "slow_aura",
-        "knockback",
-        "stun",
-        "multishot",
-        "pierce",
-        "armor_shred",
-        "splash",
-        "chain",
-        "harvest_amount",
-        "harvest_speed",
-        "harvest_rate",
-        "multi_harvest",
-        "harvest_aura",
-    ],
-    "TOWER": [
-        "points",
-        "alphabetical",
-        "damage",
-        "dps",
-        "dmg_buff_aura",
-        "attack_speed",
-        "firerate_buff_aura",
-        "toughness",
-        "heal_aura",
-        "armor",
-        "armor_buff_aura",
-        "crit",
-        "range",
-        "burn_aura",
-        "poison",
-        "curse",
-        "slow",
-        "slow_aura",
-        "knockback",
-        "stun",
-        "multishot",
-        "pierce",
-        "armor_shred",
-        "splash",
-        "chain",
-    ],
-    "CURSED": [
-        "points",
-        "alphabetical",
-        "damage",
-        "dps",
-        "dmg_buff_aura",
-        "attack_speed",
-        "firerate_buff_aura",
-        "toughness",
-        "heal_aura",
-        "armor",
-        "armor_buff_aura",
-        "crit",
-        "range",
-        "burn_aura",
-        "poison",
-        "curse",
-        "slow",
-        "slow_aura",
-        "knockback",
-        "stun",
-        "multishot",
-        "pierce",
-        "armor_shred",
-        "splash",
-        "chain",
-    ],
-    "HARVESTER": [
-        "points",
-        "alphabetical",
-        "toughness",
-        "armor",
-        "range",
-        "harvest_amount",
-        "harvest_speed",
-        "harvest_rate",
-        "harvest_types",
-        "multi_harvest",
-        "harvest_aura",
-    ],
-    "MOD": [
-        "points",
-        "alphabetical",
-        "damage",
-        "dmg_buff_aura",
-        "attack_speed",
-        "firerate_buff_aura",
-        "toughness",
-        "heal_aura",
-        "armor",
-        "armor_buff_aura",
-        "crit",
-        "range",
-        "burn_aura",
-        "poison",
-        "slow",
-        "slow_aura",
-        "knockback",
-        "stun",
-        "multishot",
-        "pierce",
-        "armor_shred",
-        "splash",
-        "chain",
-        "harvest_amount",
-        "harvest_speed",
-        "multi_harvest",
-        "harvest_aura",
-    ],
-}
 
-SORT_LABELS: Dict[str, str] = {
-    "points": "Points",
-    "alphabetical": "Alphabetical",
-    **DISPLAY_NAMES,
-}
+def lighten_stat_filter_color(color: str, amount: float = 0.82) -> str:
+    channels = [int(color[index : index + 2], 16) for index in (1, 3, 5)]
+    light_channels = [
+        round(channel + (255 - channel) * amount) for channel in channels
+    ]
+    return "#" + "".join(f"{channel:02X}" for channel in light_channels)
 
 
 def normalize_kind(raw_kind: str) -> str:
@@ -339,6 +210,30 @@ def fmt_num(val: Optional[float], decimals: int = 2) -> str:
     if abs(val - round(val)) < 1e-6:
         return str(int(round(val)))
     return f"{val:.{decimals}f}".rstrip("0").rstrip(".")
+
+
+def attack_rate_from_stat(stat: float) -> float:
+    """Convert game attack-speed points to attacks per second."""
+    return (max(0.01, stat) / 2.0) ** 0.78
+
+
+def crit_chance_from_stat(stat: float) -> float:
+    """Return the game's critical-hit chance for the given crit points."""
+    progress = min(1.0, max(0.0, stat / 1000.0))
+    return 0.1 + 0.4 * progress
+
+
+def crit_multiplier_from_stat(stat: float) -> float:
+    """Return the game's critical damage multiplier for the given crit points."""
+    chance = crit_chance_from_stat(stat)
+    crit_damage = 1.1 + 7.0 * stat / 1000.0
+    return 1.0 + (crit_damage - 1.0) / chance
+
+
+def format_crit_summary(stat: float) -> str:
+    chance = crit_chance_from_stat(stat)
+    multiplier = crit_multiplier_from_stat(stat)
+    return f"{fmt_num(chance * 100, 0)}% x{fmt_num(multiplier, 1)}"
 
 
 def consume_word_letters(available_letters: str, word: str) -> Tuple[str, int]:
@@ -371,36 +266,102 @@ def consume_word_letters(available_letters: str, word: str) -> Tuple[str, int]:
     return "".join(chars), consumed
 
 
-# Favorites Persistence (favorites.txt, one word per line)
-def resolve_favorites_path() -> Path:
+# User Data Persistence (user_data.json)
+def resolve_user_data_path() -> Path:
+    if getattr(sys, "frozen", False):
+        app_dir = Path(sys.executable).resolve().parent
+    else:
+        app_dir = Path(__file__).resolve().parent
+
+    candidate = app_dir / "user_data.json"
+    if os.access(str(app_dir), os.W_OK):
+        return candidate
+    return Path.home() / "user_data.json"
+
+
+def resolve_legacy_favorites_path() -> Path:
     if getattr(sys, "frozen", False):
         app_dir = Path(sys.executable).resolve().parent
     else:
         app_dir = Path(__file__).resolve().parent
 
     candidate = app_dir / "favorites.txt"
-    if os.access(str(app_dir), os.W_OK):
+    if candidate.is_file():
         return candidate
     return Path.home() / "favorites.txt"
 
 
-def load_favorites_txt(path: Path) -> Set[str]:
-    if not path.is_file():
-        return set()
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-        return {line.strip().lower() for line in lines if line.strip()}
-    except Exception:
-        return set()
+def normalize_user_data(data: Any) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        raise ValueError("User data must be a JSON object.")
+
+    if "favorites" not in data:
+        raise ValueError("User data must include a 'favorites' list.")
+    favorites = data["favorites"]
+    if not isinstance(favorites, list) or any(
+        not isinstance(word, str) for word in favorites
+    ):
+        raise ValueError("'favorites' must be a list of words.")
+
+    normalized = dict(data)
+    normalized.setdefault("version", 1)
+    normalized["favorites"] = sorted(
+        {word.strip().lower() for word in favorites if word.strip()}
+    )
+    return normalized
 
 
-def save_favorites_txt(path: Path, favorites: Set[str]) -> None:
-    try:
-        ordered = sorted(w.strip().lower() for w in favorites if w.strip())
-        content = ("\n".join(ordered) + "\n") if ordered else ""
-        path.write_text(content, encoding="utf-8")
-    except Exception:
-        pass
+def load_user_data_json(path: Path) -> Dict[str, Any]:
+    return normalize_user_data(json.loads(path.read_text(encoding="utf-8")))
+
+
+def save_user_data_json(path: Path, user_data: Dict[str, Any]) -> None:
+    path.write_text(
+        json.dumps(user_data, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def resolve_blacklist_path() -> Path:
+    if getattr(sys, "frozen", False):
+        app_dir = Path(sys.executable).resolve().parent
+    else:
+        app_dir = Path(__file__).resolve().parent
+    return app_dir / "blacklist.txt"
+
+
+def parse_word_list(contents: str) -> Set[str]:
+    return {
+        line.strip().lower()
+        for line in contents.splitlines()
+        if line.strip()
+    }
+
+
+def validate_units_json(data: Any, *, require_cursed: bool = False) -> int:
+    raw_units = data.get("units") if isinstance(data, dict) else data
+    if not isinstance(raw_units, list):
+        raise ValueError("JSON must contain a list of units.")
+
+    records = [
+        unit
+        for unit in raw_units
+        if isinstance(unit, dict) and str(unit.get("word", "")).strip()
+    ]
+    if not records:
+        raise ValueError("No word records were found.")
+    if require_cursed and not any(unit.get("isCursed") for unit in records):
+        raise ValueError("No cursed towers were found.")
+    return len(records)
+
+
+def format_file_size(size_bytes: int) -> str:
+    size = float(size_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"
 
 # Unit Data Model & Fast Search Engine
 class UnitRecord:
@@ -418,6 +379,7 @@ class UnitRecord:
         "range",
         "attack_interval",
         "attack_speed",
+        "attacks_per_second",
         "dps",
         "health",
         "armor",
@@ -435,6 +397,7 @@ class UnitRecord:
         "is_cursed",
         "curse_effects",
         "_preview_stats",
+        "_positive_stat_mask",
     )
 
     def __init__(self, u: Dict[str, Any]):
@@ -461,13 +424,14 @@ class UnitRecord:
             float(u["attackInterval"]) if "attackInterval" in u else None
         )
         if self.attack_interval and self.attack_interval > 0:
-            self.attack_speed: Optional[float] = 1.0 / self.attack_interval
-            self.dps: Optional[float] = (
-                self.damage / self.attack_interval if self.damage is not None else None
+            self.attack_speed: Optional[float] = 1.0 / self.attack_interval + 1.0
+            self.attacks_per_second: Optional[float] = attack_rate_from_stat(
+                self.attack_speed
             )
         else:
             self.attack_speed = None
-            self.dps = None
+            self.attacks_per_second = None
+        self.dps: Optional[float] = None
 
         self.health: Optional[float] = float(u["health"]) if "health" in u else None
         self.armor: Optional[float] = (
@@ -510,6 +474,16 @@ class UnitRecord:
             (str(s.get("name", "")), float(s.get("value", 0.0)))
             for s in u.get("specials", [])
         )
+        if self.damage is not None and self.attacks_per_second is not None:
+            crit_stat = self._special_val("crit")
+            if crit_stat is None:
+                crit_stat = 0.0
+            crit_chance = crit_chance_from_stat(crit_stat)
+            crit_multiplier = crit_multiplier_from_stat(crit_stat)
+            expected_crit_factor = 1.0 + crit_chance * (crit_multiplier - 1.0)
+            self.dps = (
+                self.damage * self.attacks_per_second * expected_crit_factor
+            )
         self.deltas: Tuple[Tuple[str, str, float], ...] = tuple(
             (str(d.get("stat", "")), str(d.get("op", "")), float(d.get("value", 0.0)))
             for d in u.get("deltas", [])
@@ -531,7 +505,7 @@ class UnitRecord:
         if self.kind == "TOWER":
             if self.damage is not None and self.damage > TOWER_DEFAULTS["damage"] + 0.01:
                 tags.add("damage")
-            if self.attack_interval is not None and self.attack_interval < TOWER_DEFAULTS["attackInterval"] - 0.01:
+            if self.attack_speed is not None and self.attack_speed > TOWER_DEFAULTS["attackSpeed"] + 0.01:
                 tags.add("attack_speed")
             if self.health is not None and self.health > TOWER_DEFAULTS["health"] + 0.1:
                 tags.add("toughness")
@@ -553,6 +527,7 @@ class UnitRecord:
 
         self.effect_tags = frozenset(tags)
         self._preview_stats: Optional[List[Tuple[str, str, str]]] = None
+        self._positive_stat_mask = self._build_positive_stat_mask()
 
     def _special_val(self, name: str) -> Optional[float]:
         for sp_name, val in self.specials:
@@ -564,6 +539,85 @@ class UnitRecord:
         for stat, _, val in self.deltas:
             if stat == stat_name:
                 return val
+        return None
+
+    def _base_stat_change(self, stat_key: str) -> Optional[float]:
+        if stat_key == "damage" and self.kind == "TOWER" and self.damage is not None:
+            return self.damage - TOWER_DEFAULTS["damage"]
+        if stat_key == "attack_speed" and self.kind == "TOWER" and self.attack_speed is not None:
+            return self.attack_speed - TOWER_DEFAULTS["attackSpeed"]
+        if stat_key in ("toughness", "health") and self.kind in ("TOWER", "HARVESTER") and self.health is not None:
+            default_health = (
+                TOWER_DEFAULTS["health"]
+                if self.kind == "TOWER"
+                else HARVESTER_DEFAULTS["health"]
+            )
+            return self.health - default_health
+        if stat_key == "armor" and self.kind in ("TOWER", "HARVESTER") and self.armor is not None:
+            default_armor = (
+                TOWER_DEFAULTS["armor"] if self.kind == "TOWER" else 0.0
+            )
+            return self.armor - default_armor
+        if stat_key == "range" and self.kind == "TOWER" and self.range is not None:
+            return self.range - TOWER_DEFAULTS["range"]
+        if stat_key == "range" and self.kind == "HARVESTER" and self.harvest_range is not None:
+            return self.harvest_range - HARVESTER_DEFAULTS["harvestRange"]
+        if stat_key == "harvest_amount" and self.kind == "HARVESTER" and self.harvest_amount is not None:
+            return self.harvest_amount - HARVESTER_DEFAULTS["harvestAmount"]
+        if stat_key == "harvest_speed" and self.kind == "HARVESTER" and self.harvest_speed is not None:
+            return self.harvest_speed - (
+                1.0 / HARVESTER_DEFAULTS["harvestInterval"]
+            )
+        return None
+
+    def _build_positive_stat_mask(self) -> int:
+        positive_by_stat: Dict[str, bool] = {}
+        for stat, op, value in self.deltas:
+            if stat not in positive_by_stat:
+                change = value - 1.0 if op.lower() == "mult" else value
+                positive_by_stat[stat] = change > 0.01
+        for name, value in self.specials:
+            if name not in positive_by_stat:
+                positive_by_stat[name] = value > 0.01
+
+        mask = 0
+        for stat_key, bit in STAT_FILTER_BITS.items():
+            if stat_key == "curse":
+                is_positive = self.is_cursed
+            else:
+                base_change = self._base_stat_change(stat_key)
+                is_positive = (
+                    base_change > 0.01
+                    if base_change is not None
+                    else positive_by_stat.get(stat_key, False)
+                )
+
+            if is_positive:
+                mask |= bit
+        return mask
+
+    def has_positive_stat_change(self, stat_key: str) -> bool:
+        bit = STAT_FILTER_BITS.get(stat_key)
+        return bit is not None and bool(self._positive_stat_mask & bit)
+
+    def get_positive_stat_change(self, stat_key: str) -> Optional[float]:
+        """Return a positive stat improvement for the filter chips, if present."""
+        if stat_key == "curse":
+            return 1.0 if self.is_cursed else None
+
+        base_change = self._base_stat_change(stat_key)
+
+        if base_change is not None:
+            return base_change if base_change > 0.01 else None
+
+        for stat, op, value in self.deltas:
+            if stat == stat_key:
+                change = value - 1.0 if op.lower() == "mult" else value
+                return change if change > 0.01 else None
+
+        special_value = self._special_val(stat_key)
+        if special_value is not None and special_value > 0.01:
+            return special_value
         return None
 
     def get_stat_value(self, stat_key: str) -> Optional[float]:
@@ -633,8 +687,10 @@ class UnitRecord:
             return (fmt_num(val, 1), "DPS", tone)
         if stat_key == "attack_speed":
             if self.kind == "TOWER":
-                tone = "pos" if val > 1.01 else ("neg" if val < 0.99 else "neutral")
-                return (f"{fmt_num(val, 2)}/s", "Attack Speed", tone)
+                delta = val - TOWER_DEFAULTS["attackSpeed"]
+                tone = "pos" if delta > 0.01 else ("neg" if delta < -0.01 else "neutral")
+                value = f"+{fmt_num(delta, 2)}" if delta > 0 else fmt_num(delta, 2)
+                return (value, "Attack Speed", tone)
             return (f"+{fmt_num(val, 2)}", "Attack Speed", "pos")
         if stat_key in ("toughness", "health"):
             if self.kind == "MOD":
@@ -678,8 +734,14 @@ class UnitRecord:
             # 2. Boosted base stats
             if self.damage is not None and self.damage > TOWER_DEFAULTS["damage"] + 0.01:
                 items.append((fmt_num(self.damage, 1), "Damage", "pos"))
-            if self.attack_interval is not None and self.attack_interval < TOWER_DEFAULTS["attackInterval"] - 0.01:
-                items.append((f"{fmt_num(self.attack_speed, 2)}/s", "Attack Speed", "pos"))
+            if self.attack_speed is not None and self.attack_speed > TOWER_DEFAULTS["attackSpeed"] + 0.01:
+                items.append(
+                    (
+                        f"+{fmt_num(self.attack_speed - TOWER_DEFAULTS['attackSpeed'], 2)}",
+                        "Attack Speed",
+                        "pos",
+                    )
+                )
             if self.range is not None and self.range > TOWER_DEFAULTS["range"] + 0.01:
                 items.append((fmt_num(self.range, 1), "Range", "pos"))
             if self.health is not None and self.health > TOWER_DEFAULTS["health"] + 0.1:
@@ -690,23 +752,15 @@ class UnitRecord:
             # 3. Drawbacks
             if self.damage is not None and self.damage < TOWER_DEFAULTS["damage"] - 0.01:
                 items.append((fmt_num(self.damage, 1), "Damage", "neg"))
-            if self.attack_interval is not None and self.attack_interval > TOWER_DEFAULTS["attackInterval"] + 0.01:
-                items.append((f"{fmt_num(self.attack_speed, 2)}/s", "Attack Speed", "neg"))
+            if self.attack_speed is not None and self.attack_speed < TOWER_DEFAULTS["attackSpeed"] - 0.01:
+                delta = self.attack_speed - TOWER_DEFAULTS["attackSpeed"]
+                items.append((fmt_num(delta, 2), "Attack Speed", "neg"))
             if self.range is not None and self.range < TOWER_DEFAULTS["range"] - 0.01:
                 items.append((fmt_num(self.range, 1), "Range", "neg"))
             if self.health is not None and self.health < TOWER_DEFAULTS["health"] - 0.1:
                 items.append((fmt_num(self.health, 0), "HP", "neg"))
             if self.armor is not None and self.armor < TOWER_DEFAULTS["armor"] - 0.01:
                 items.append(("0", "Armor", "neg"))
-
-            # 4. Fill up to 3 with core defaults
-            existing = {x[1] for x in items}
-            if len(items) < 3 and "Damage" not in existing and self.damage is not None:
-                items.append((fmt_num(self.damage, 1), "Damage", "neutral"))
-            if len(items) < 3 and "Range" not in existing and self.range is not None:
-                items.append((fmt_num(self.range, 1), "Range", "neutral"))
-            if len(items) < 3 and "HP" not in existing and self.health is not None:
-                items.append((fmt_num(self.health, 0), "HP", "neutral"))
 
             return items[:3]
 
@@ -728,10 +782,11 @@ class UnitRecord:
                     self.harvest_amount < HARVESTER_DEFAULTS["harvestAmount"] - 0.01
                     or self.harvest_interval > HARVESTER_DEFAULTS["harvestInterval"] + 0.01
                 )
-                tone = "pos" if boosted else ("neg" if reduced else "neutral")
-                items.append(
-                    (f"{fmt_num(self.harvest_amount, 1)}/{fmt_num(self.harvest_interval, 2)}s", "Harvest", tone)
-                )
+                if boosted or reduced:
+                    tone = "pos" if boosted else "neg"
+                    items.append(
+                        (f"{fmt_num(self.harvest_amount, 1)}/{fmt_num(self.harvest_interval, 2)}s", "Harvest", tone)
+                    )
 
             if len(items) < 3 and self.harvest_range is not None and abs(self.harvest_range - 3.0) > 0.01:
                 tone = "pos" if self.harvest_range > 3.0 else "neg"
@@ -741,9 +796,6 @@ class UnitRecord:
                 items.append((fmt_num(self.health, 0), "HP", tone))
             if len(items) < 3 and self.armor is not None and self.armor > 0.01:
                 items.append((fmt_num(self.armor, 1), "Armor", "pos"))
-            if len(items) < 3 and self.harvest_range is not None:
-                items.append((fmt_num(self.harvest_range, 1), "Range", "neutral"))
-
             return items[:3]
 
         # MOD
@@ -758,20 +810,159 @@ class UnitRecord:
         return items
 
 
+def find_exact_word_combinations(
+    records: List[UnitRecord],
+    available_letters: str,
+    include_two_letter_words: bool,
+) -> List[Tuple[UnitRecord, ...]]:
+    rack = [
+        ch.lower()
+        for ch in available_letters
+        if ("a" <= ch.lower() <= "z") or ch in ("?", "*")
+    ]
+    if not rack:
+        return []
+
+    rack_counts = [0] * 26
+    wildcards = 0
+    for ch in rack:
+        if ch in ("?", "*"):
+            wildcards += 1
+        else:
+            rack_counts[ord(ch) - ord("a")] += 1
+
+    rack_length = len(rack)
+    min_word_length = 2 if include_two_letter_words else 3
+    candidates: List[UnitRecord] = []
+    signatures: List[Tuple[int, ...]] = []
+    candidate_lengths: List[int] = []
+    candidates_by_letter: List[List[int]] = [[] for _ in range(26)]
+
+    for rec in sorted(records, key=lambda item: item.word):
+        if rec.length < min_word_length or rec.length > rack_length:
+            continue
+        counts = [0] * 26
+        valid_word = True
+        for ch in rec.word:
+            if not ("a" <= ch <= "z"):
+                valid_word = False
+                break
+            counts[ord(ch) - ord("a")] += 1
+        if not valid_word:
+            continue
+        if sum(max(0, counts[i] - rack_counts[i]) for i in range(26)) > wildcards:
+            continue
+
+        candidate_index = len(candidates)
+        candidates.append(rec)
+        signatures.append(tuple(counts))
+        candidate_lengths.append(rec.length)
+        for letter_index, count in enumerate(counts):
+            if count:
+                candidates_by_letter[letter_index].append(candidate_index)
+
+    if not candidates:
+        return []
+
+    def consume_word(
+        remaining: Tuple[int, ...],
+        wildcards_left: int,
+        signature: Tuple[int, ...],
+    ) -> Optional[Tuple[Tuple[int, ...], int]]:
+        updated: List[int] = []
+        wildcards_needed = 0
+        for available, needed in zip(remaining, signature):
+            used = min(available, needed)
+            updated.append(available - used)
+            wildcards_needed += needed - used
+        if wildcards_needed > wildcards_left:
+            return None
+        return tuple(updated), wildcards_left - wildcards_needed
+
+    @lru_cache(maxsize=None)
+    def solve(
+        remaining: Tuple[int, ...], wildcards_left: int
+    ) -> Tuple[Tuple[int, ...], ...]:
+        remaining_length = sum(remaining) + wildcards_left
+        if remaining_length == 0:
+            return ((),)
+        if remaining_length < min_word_length:
+            return ()
+
+        remaining_letters = [
+            index for index, count in enumerate(remaining) if count
+        ]
+        if remaining_letters:
+            pivot = min(
+                remaining_letters,
+                key=lambda index: len(candidates_by_letter[index]),
+            )
+            candidate_indexes = candidates_by_letter[pivot]
+        else:
+            candidate_indexes = range(len(candidates))
+
+        combinations: Set[Tuple[int, ...]] = set()
+        for candidate_index in candidate_indexes:
+            if candidate_lengths[candidate_index] > remaining_length:
+                continue
+            next_state = consume_word(
+                remaining,
+                wildcards_left,
+                signatures[candidate_index],
+            )
+            if next_state is None:
+                continue
+            next_remaining, next_wildcards = next_state
+            for suffix in solve(next_remaining, next_wildcards):
+                combinations.add(tuple(sorted((candidate_index,) + suffix)))
+        return tuple(sorted(combinations))
+
+    index_combinations = solve(tuple(rack_counts), wildcards)
+    return [
+        tuple(candidates[index] for index in combination)
+        for combination in index_combinations
+    ]
+
+
 class UnitDatabase:
     """Loads, indexes, filters, and sorts Towers of Babble units."""
 
     def __init__(self):
         self.units: List[UnitRecord] = []
         self.available_tags: Set[str] = set()
+        self._base_records: List[UnitRecord] = []
+        self._extra_records: List[UnitRecord] = []
+        self.blacklist_path = resolve_blacklist_path()
+        self.blacklisted_words: Set[str] = set()
+        self.blacklist_source_label = ""
+        self.blacklist_size_bytes: Optional[int] = None
+        self.blacklist_loaded = False
+        try:
+            if self.blacklist_path.is_file():
+                contents = self.blacklist_path.read_bytes()
+                self.blacklisted_words = parse_word_list(
+                    contents.decode("utf-8")
+                )
+                self.blacklist_source_label = self.blacklist_path.name
+                self.blacklist_size_bytes = len(contents)
+                self.blacklist_loaded = True
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"Could not load {self.blacklist_path.name}: {exc}")
+
+        self.extra_source_path: str = ""
+        self.extra_source_size_bytes: Optional[int] = None
         self.max_len: int = 15
         self.source_path: str = ""
+        self.source_size_bytes: Optional[int] = None
 
-    def load_data(self, data: Any, source_label: str = "") -> int:
+    def load_data(
+        self,
+        data: Any,
+        source_label: str = "",
+        source_size_bytes: Optional[int] = None,
+    ) -> int:
         raw_units = data.get("units", []) if isinstance(data, dict) else data
         records: List[UnitRecord] = []
-        tags: Set[str] = set()
-        max_l = 2
 
         for u in raw_units:
             if not isinstance(u, dict) or "word" not in u:
@@ -780,38 +971,101 @@ class UnitDatabase:
             if not rec.word:
                 continue
             records.append(rec)
-            if rec.length > max_l:
-                max_l = rec.length
-            tags.update(rec.effect_tags)
 
-        self.units = records
-        self.available_tags = tags
-        self.max_len = max_l
+        self._base_records = records
         self.source_path = source_label
-        return len(records)
+        self.source_size_bytes = source_size_bytes
+        self._refresh_records()
+        return len(self.units)
 
     def load_file(self, filepath: str) -> int:
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return self.load_data(data, source_label=filepath)
+        raw_bytes = Path(filepath).read_bytes()
+        data = json.loads(raw_bytes.decode("utf-8"))
+        return self.load_data(
+            data,
+            source_label=filepath,
+            source_size_bytes=len(raw_bytes),
+        )
 
-    def load_extra_file(self, filepath: str) -> int:
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
+    def load_extra_data(
+        self,
+        data: Any,
+        source_label: str = "",
+        source_size_bytes: Optional[int] = None,
+    ) -> int:
         raw_units = data.get("units", []) if isinstance(data, dict) else data
-        existing_words = {record.word for record in self.units}
-        added = 0
+        records: List[UnitRecord] = []
         for u in raw_units:
             if not isinstance(u, dict) or "word" not in u:
                 continue
             rec = UnitRecord(u)
-            if rec.word and rec.word not in existing_words:
-                self.units.append(rec)
-                existing_words.add(rec.word)
-                added += 1
-                self.available_tags.update(rec.effect_tags)
-                self.max_len = max(self.max_len, rec.length)
-        return added
+            if rec.word:
+                records.append(rec)
+
+        self._extra_records = records
+        self.extra_source_path = source_label
+        self.extra_source_size_bytes = source_size_bytes
+        self._refresh_records()
+        base_ids = {id(record) for record in self._base_records}
+        return sum(1 for record in self.units if id(record) not in base_ids)
+
+    def load_extra_file(self, filepath: str) -> int:
+        raw_bytes = Path(filepath).read_bytes()
+        data = json.loads(raw_bytes.decode("utf-8"))
+        return self.load_extra_data(
+            data,
+            source_label=filepath,
+            source_size_bytes=len(raw_bytes),
+        )
+
+    def load_blacklist_data(
+        self,
+        contents: str,
+        source_label: str = "",
+        source_size_bytes: Optional[int] = None,
+    ) -> int:
+        self.blacklisted_words = parse_word_list(contents)
+        if source_label:
+            self.blacklist_source_label = source_label
+        self.blacklist_size_bytes = (
+            source_size_bytes
+            if source_size_bytes is not None
+            else len(contents.encode("utf-8"))
+        )
+        self.blacklist_loaded = True
+        self._refresh_records()
+        return len(self.units)
+
+    def _refresh_records(self) -> None:
+        records: List[UnitRecord] = []
+        tags: Set[str] = set()
+        max_len = 2
+        base_words: Set[str] = set()
+
+        for record in self._base_records:
+            word = record.word.strip().lower()
+            base_words.add(word)
+            if word in self.blacklisted_words:
+                continue
+            records.append(record)
+
+        extra_words: Set[str] = set()
+        for record in self._extra_records:
+            word = record.word.strip().lower()
+            if word in base_words or word in extra_words:
+                continue
+            extra_words.add(word)
+            if word in self.blacklisted_words:
+                continue
+            records.append(record)
+
+        for record in records:
+            tags.update(record.effect_tags)
+            max_len = max(max_len, record.length)
+
+        self.units = records
+        self.available_tags = tags
+        self.max_len = max_len
 
     def get_ordered_effect_options(self) -> Dict[str, str]:
         """Build the Effect / Resource select options in the exact requested order."""
@@ -836,12 +1090,14 @@ class UnitDatabase:
         exact_amount: bool = False,
         length_filter: Optional[int] = None,
         kind_filter: str = "ALL",
+        kind_filters: Optional[Set[str]] = None,
         effect_filter: str = "",
         favorites_only: bool = False,
         favorites: Optional[Set[str]] = None,
         sort_by: str = "points",
         descending: bool = True,
-        group_by_length: bool = True,
+        group_by_length: bool = False,
+        include_two_letter_words: bool = False,
     ) -> List[UnitRecord]:
         avail_clean = "".join(
             ch for ch in available_letters.lower() if ("a" <= ch <= "z") or ch in ("?", "*")
@@ -869,10 +1125,16 @@ class UnitDatabase:
 
         results: List[UnitRecord] = []
         for rec in self.units:
+            if not include_two_letter_words and rec.length == 2:
+                continue
+
             if favorites_only and rec.word not in fav_set:
                 continue
 
-            if kind_filter != "ALL":
+            if kind_filters is not None:
+                if rec.kind not in kind_filters:
+                    continue
+            elif kind_filter != "ALL":
                 if kind_filter == "CURSED":
                     if not rec.is_cursed:
                         continue
@@ -1006,23 +1268,62 @@ def autoload_database() -> Optional[str]:
     else:
         app_dir = Path(__file__).resolve().parent
     cwd = Path.cwd()
-    candidates = [
-        app_dir / "units.json",
-        app_dir / "units_2.json",
-        cwd / "units.json",
-        cwd / "units_2.json",
+    roots = list(dict.fromkeys((app_dir, cwd)))
+    unit_paths = [
+        root / name
+        for root in roots
+        for name in ("units.json", "units_2.json")
     ]
-    for path in candidates:
+    loaded_paths: List[str] = []
+
+    for path in unit_paths:
         if path.is_file():
-            GLOBAL_DB.load_file(str(path))
-            loaded_paths = [str(path)]
-            for curse_name in ("cursed_words.json",):
-                curse_path = path.with_name(curse_name)
-                if curse_path.is_file():
-                    GLOBAL_DB.load_extra_file(str(curse_path))
-                    loaded_paths.append(str(curse_path))
-            return " + ".join(loaded_paths)
-    return None
+            try:
+                raw_bytes = path.read_bytes()
+                data = json.loads(raw_bytes.decode("utf-8"))
+                validate_units_json(data)
+                GLOBAL_DB.load_data(
+                    data,
+                    source_label=str(path),
+                    source_size_bytes=len(raw_bytes),
+                )
+                loaded_paths.append(str(path))
+                break
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                print(f"Could not load {path.name}: {exc}")
+
+    curse_paths = [root / "cursed_words.json" for root in roots]
+    for path in curse_paths:
+        if path.is_file():
+            try:
+                raw_bytes = path.read_bytes()
+                data = json.loads(raw_bytes.decode("utf-8"))
+                validate_units_json(data, require_cursed=True)
+                GLOBAL_DB.load_extra_data(
+                    data,
+                    source_label=str(path),
+                    source_size_bytes=len(raw_bytes),
+                )
+                loaded_paths.append(str(path))
+                break
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                print(f"Could not load {path.name}: {exc}")
+
+    return " + ".join(loaded_paths) if loaded_paths else None
 
 
 # ---------------------------------------------------------------------------
@@ -1090,7 +1391,7 @@ CUSTOM_CSS = """
     padding: 16px 18px 28px 18px;
   }
   .babble-panel {
-    background: #E4E4E4;
+    background: #F4F4F4;
     border: 1px solid #B7B7B7;
     border-radius: 10px;
     padding: 14px 16px;
@@ -1104,6 +1405,9 @@ CUSTOM_CSS = """
     letter-spacing: 0.02em;
     box-shadow: none !important;
     transition: background-color 0.14s ease, border-color 0.14s ease;
+  }
+  .babble-pill-blue-border {
+    border: 2px solid #6BA3D1 !important;
   }
   .babble-pill:hover {
     background: #CECECE !important;
@@ -1164,13 +1468,39 @@ CUSTOM_CSS = """
     background: #F4F4F4 !important;
     border-radius: 7px !important;
   }
+  .babble-file-status {
+    display: inline-flex;
+    min-width: 108px;
+    justify-content: center;
+    border-radius: 5px;
+    padding: 5px 8px;
+    color: #FFFFFF !important;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .babble-file-upload .q-uploader__subtitle,
+  .babble-file-upload .q-uploader__list,
+  .babble-file-upload .q-uploader .q-linear-progress {
+    display: none !important;
+  }
+  .babble-file-upload .q-uploader__header {
+    min-height: 42px !important;
+  }
+  .babble-file-upload.babble-file-loaded .q-uploader__header {
+    background: #2E7D32 !important;
+    color: #FFFFFF !important;
+  }
+  .babble-file-upload.babble-file-not-loaded .q-uploader__header {
+    background: #B71C1C !important;
+    color: #FFFFFF !important;
+  }
   .babble-uppercase input {
     text-transform: uppercase !important;
     font-weight: 700 !important;
     letter-spacing: 0.06em;
   }
   .babble-group-bar {
-    background: #D4D4D4;
+    background: #F4F4F4;
     border: 1px solid #B0B0B0;
     border-radius: 7px;
     padding: 6px 12px;
@@ -1182,7 +1512,7 @@ CUSTOM_CSS = """
     background: #C9C9C9;
   }
   .babble-unit-box {
-    background: #E2E2E2;
+    background: #F4F4F4;
     border: 1px solid #BDBDBD;
     border-radius: 8px;
     padding: 9px 12px;
@@ -1217,7 +1547,7 @@ CUSTOM_CSS = """
     border-color: #1E7D32 !important;
   }
   .babble-unit-box-open {
-    background: #E0E0E0 !important;
+    background: #F4F4F4 !important;
     border: 1.5px solid #8A8A8A !important;
   }
   .babble-unit-box-open.babble-unit-box-tower {
@@ -1233,7 +1563,7 @@ CUSTOM_CSS = """
     border: 1.5px solid #1E7D32 !important;
   }
   .babble-pts-tile {
-    background: #E8DDAB;
+    background: #F4F4F4;
     border: 1px solid #B8AD7E;
     border-radius: 4px;
     padding: 1px 7px;
@@ -1244,15 +1574,27 @@ CUSTOM_CSS = """
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
     white-space: nowrap;
   }
-  .babble-stat-chip {
-    background: #DCDCDC;
-    border: 1px solid #9A9A9A;
-    border-radius: 4px;
-    padding: 1px 7px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #111111;
-    line-height: 1.35;
+  .q-btn.babble-stat-filter {
+    border: 2px solid transparent !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em;
+    min-height: 24px !important;
+    padding: 0 6px !important;
+  }
+  .q-btn.babble-stat-filter .babble-stat-filter-count {
+    background: #FFFFFF !important;
+    color: #222222 !important;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-right: 4px;
+    padding: 1px 4px;
+  }
+  .q-btn.babble-stat-filter .babble-stat-filter-label {
     white-space: nowrap;
   }
   .babble-field-lbl {
@@ -1290,8 +1632,41 @@ def build_nicegui_app():
 
     class FinderSession:
         def __init__(self):
-            self.favorites_path = resolve_favorites_path()
-            self.favorites: Set[str] = load_favorites_txt(self.favorites_path)
+            self.user_data_path = resolve_user_data_path()
+            self.user_data: Dict[str, Any] = {"version": 1, "favorites": []}
+            self.user_data_source = ""
+            self.user_data_size_bytes: Optional[int] = None
+            self.user_data_loaded = False
+
+            if self.user_data_path.is_file():
+                try:
+                    self.user_data = load_user_data_json(self.user_data_path)
+                    self.user_data_source = self.user_data_path.name
+                    self.user_data_size_bytes = self.user_data_path.stat().st_size
+                    self.user_data_loaded = True
+                except (
+                    OSError,
+                    UnicodeDecodeError,
+                    json.JSONDecodeError,
+                    ValueError,
+                ) as exc:
+                    print(f"Could not load {self.user_data_path.name}: {exc}")
+            else:
+                legacy_path = resolve_legacy_favorites_path()
+                if legacy_path.is_file():
+                    try:
+                        legacy_favorites = parse_word_list(
+                            legacy_path.read_text(encoding="utf-8")
+                        )
+                        self.user_data["favorites"] = sorted(legacy_favorites)
+                        save_user_data_json(self.user_data_path, self.user_data)
+                        self.user_data_source = self.user_data_path.name
+                        self.user_data_size_bytes = self.user_data_path.stat().st_size
+                        self.user_data_loaded = True
+                    except (OSError, UnicodeDecodeError) as exc:
+                        print(f"Could not migrate {legacy_path.name}: {exc}")
+
+            self.favorites: Set[str] = set(self.user_data["favorites"])
 
             # Deferred form state (only applied when Find Words / Clear / Use is pressed)
             self.form_letters: str = ""
@@ -1307,16 +1682,24 @@ def build_nicegui_app():
             self.applied_query: Dict[str, Any] = self._snapshot_form()
 
             # Immediate-update controls
-            self.kind_filter: str = "ALL"
+            self.selected_kinds: Set[str] = {"TOWER", "HARVESTER", "MOD"}
             self.sort_by: str = "points"
+            self.sort_mode: str = "value"
             self.descending: bool = True
-            self.group_by_length: bool = True
+            self.group_by_length: bool = False
+            self.show_two_letter_words: bool = False
+            self.clever_mode: bool = False
             self.favorites_only: bool = False
+            self.selected_stat_filters: Set[str] = set()
+            self.stat_filter_counts: Dict[str, int] = {}
 
             # Current search results & pagination
             self.current_matches: List[UnitRecord] = []
+            self.current_combinations: List[Tuple[UnitRecord, ...]] = []
             self.visible_limit: int = PAGE_SIZE
             self.collapsed_lengths: Set[int] = set()
+            self.collapsed_clever_groups: Set[int] = set()
+            self.group_visible_limits: Dict[Tuple[str, int], int] = {}
             self._suppress_events: bool = False
 
             # UI widget references populated in build()
@@ -1326,10 +1709,13 @@ def build_nicegui_app():
             self.inp_ends = None
             self.sel_length = None
             self.sel_effect = None
-            self.sel_category = None
-            self.sel_sort = None
             self.sel_order = None
+            self.kind_buttons: Dict[str, Any] = {}
+            self.btn_sort_mode = None
             self.btn_group = None
+            self.btn_two_letter_words = None
+            self.btn_clever_mode = None
+            self.btn_collapse_groups = None
             self.btn_favorites = None
             self.btn_in_order = None
             self.btn_exact = None
@@ -1337,9 +1723,39 @@ def build_nicegui_app():
             self.lbl_file_status = None
             self.lbl_pending = None
             self.lbl_fav_count = None
+            self.lbl_curse_count = None
             self.lbl_result_count = None
+            self.stat_filter_container = None
             self.results_container = None
-            self.load_dialog = None
+            self.settings_dialog = None
+            self.settings_file_labels: Dict[str, Any] = {}
+            self.settings_upload_boxes: Dict[str, Any] = {}
+            def file_status(loaded: bool, size_bytes: Optional[int]):
+                if loaded and size_bytes is not None:
+                    return format_file_size(size_bytes), True
+                return "File not loaded", False
+
+            self.settings_file_status: Dict[str, Tuple[str, bool]] = {
+                "units": file_status(
+                    bool(GLOBAL_DB.source_path and GLOBAL_DB._base_records),
+                    GLOBAL_DB.source_size_bytes,
+                ),
+                "cursed": file_status(
+                    bool(
+                        GLOBAL_DB.extra_source_path
+                        and any(record.is_cursed for record in GLOBAL_DB._extra_records)
+                    ),
+                    GLOBAL_DB.extra_source_size_bytes,
+                ),
+                "blacklist": file_status(
+                    GLOBAL_DB.blacklist_loaded,
+                    GLOBAL_DB.blacklist_size_bytes,
+                ),
+                "user_data": file_status(
+                    self.user_data_loaded,
+                    self.user_data_size_bytes,
+                ),
+            }
 
         def _snapshot_form(self) -> Dict[str, Any]:
             length_val: Optional[int] = None
@@ -1422,28 +1838,323 @@ def build_nicegui_app():
                 self.lbl_pending.set_visibility(False)
 
         def _update_favorites_banner(self) -> None:
+            fav_count_label = self.lbl_fav_count
+            curse_count_label = self.lbl_curse_count
+            if fav_count_label is None or curse_count_label is None:
+                return
             entered_letters = sum(
                 1
                 for ch in self.form_letters
                 if ("a" <= ch.lower() <= "z") or ch in ("?", "*")
             )
             if entered_letters == 0:
-                self.lbl_fav_count.set_text("")
-                self.lbl_fav_count.set_visibility(False)
+                fav_count_label.set_text("")
+                fav_count_label.set_visibility(False)
+                curse_count_label.set_text("")
+                curse_count_label.set_visibility(False)
                 return
 
             fav_in_list = sum(1 for r in self.current_matches if r.word in self.favorites)
             if fav_in_list > 0:
                 noun = "favorite" if fav_in_list == 1 else "favorites"
-                self.lbl_fav_count.set_text(f"♥ {fav_in_list:,} {noun} found")
-                self.lbl_fav_count.set_visibility(True)
+                fav_count_label.set_text(f"♥ {fav_in_list:,} {noun} found")
+                fav_count_label.set_visibility(True)
             else:
-                self.lbl_fav_count.set_text("")
-                self.lbl_fav_count.set_visibility(False)
+                fav_count_label.set_text("")
+                fav_count_label.set_visibility(False)
 
-        def _get_sort_options(self) -> Dict[str, str]:
-            keys = SORT_KEYS_BY_KIND.get(self.kind_filter, SORT_KEYS_BY_KIND["ALL"])
-            return {k: SORT_LABELS.get(k, pretty_name(k)) for k in keys}
+            cursed_in_list = sum(1 for r in self.current_matches if r.is_cursed)
+            if cursed_in_list > 0:
+                noun = "cursed word" if cursed_in_list == 1 else "cursed words"
+                curse_count_label.set_text(f"☠ {cursed_in_list:,} {noun}")
+                curse_count_label.set_visibility(True)
+            else:
+                curse_count_label.set_text("")
+                curse_count_label.set_visibility(False)
+
+        def _update_stat_filter_controls(self) -> None:
+            filter_container = self.stat_filter_container
+            if filter_container is None:
+                return
+            filter_container.clear()
+            with filter_container:
+                for stat_key, label, active_bg, active_fg in STAT_FILTERS:
+                    count = self.stat_filter_counts.get(stat_key, 0)
+                    is_selected = stat_key in self.selected_stat_filters
+                    bg = (
+                        active_bg
+                        if is_selected
+                        else lighten_stat_filter_color(active_bg)
+                    )
+                    fg = active_fg if is_selected else "#263238"
+                    button = (
+                        ui.button(
+                            on_click=lambda _e, key=stat_key: self.on_toggle_stat_filter(
+                                key
+                            ),
+                        )
+                        .props("unelevated dense no-caps")
+                        .classes("babble-stat-filter")
+                        .style(
+                            f"background-color: {bg} !important; "
+                            f"color: {fg} !important;"
+                        )
+                    )
+                    with button:
+                        ui.label(f"{count:,}").classes(
+                            "babble-stat-filter-count"
+                        )
+                        ui.label(label).classes("babble-stat-filter-label")
+
+        def _sync_kind_filter_controls(self) -> None:
+            for kind, button in self.kind_buttons.items():
+                color = KIND_META[kind]["color"]
+                selected = kind in self.selected_kinds
+                background = color if selected else "#DCDCDC"
+                border = color
+                foreground = (
+                    "#FFFFFF"
+                    if selected and kind == "HARVESTER"
+                    else "#263238"
+                )
+                button.style(
+                    f"background-color: {background} !important; "
+                    f"border-color: {border} !important; "
+                    f"color: {foreground} !important;"
+                )
+
+        def _sync_sort_mode_button(self) -> None:
+            if self.btn_sort_mode is None:
+                return
+            if self.sort_mode == "alphabetical":
+                self.btn_sort_mode.set_text("ALPHABETICAL")
+                color = "#6A1B9A"
+            else:
+                self.btn_sort_mode.set_text("VALUE")
+                color = "#1565C0"
+            self.btn_sort_mode.style(
+                f"background-color: {color} !important; "
+                f"border-color: {color} !important; color: #FFFFFF !important;"
+            )
+
+        def _sync_clever_mode_button(self) -> None:
+            button = self.btn_clever_mode
+            if button is None:
+                return
+            background = "#795548" if self.clever_mode else "#DCDCDC"
+            border = "#795548" if self.clever_mode else "#939393"
+            foreground = "#FFFFFF" if self.clever_mode else "#111111"
+            button.style(
+                f"background-color: {background} !important; "
+                f"border-color: {border} !important; "
+                f"color: {foreground} !important;"
+            )
+
+        def _sort_combined_results(
+            self,
+            results: List[UnitRecord],
+            base_results: List[UnitRecord],
+            stat_keys: List[str],
+        ) -> None:
+            max_changes = {
+                key: max(
+                    (
+                        rec.get_positive_stat_change(key) or 0.0
+                        for rec in base_results
+                    ),
+                    default=0.0,
+                )
+                for key in stat_keys
+            }
+
+            def combined_score(rec: UnitRecord) -> float:
+                return sum(
+                    (rec.get_positive_stat_change(key) or 0.0) / max_changes[key]
+                    for key in stat_keys
+                    if max_changes[key] > 0.0
+                )
+
+            order_sign = -1 if self.descending else 1
+            length_sign = -1 if self.descending else 1
+            if self.group_by_length:
+                results.sort(
+                    key=lambda rec: (
+                        length_sign * rec.length,
+                        order_sign * combined_score(rec),
+                        -rec.scrabble,
+                        rec.word,
+                    )
+                )
+            else:
+                results.sort(
+                    key=lambda rec: (
+                        order_sign * combined_score(rec),
+                        -rec.scrabble,
+                        rec.word,
+                    )
+                )
+
+        def _get_active_group_totals(self) -> Dict[Tuple[str, int], int]:
+            totals: Dict[Tuple[str, int], int] = {}
+            if self.clever_mode:
+                for combination in self.current_combinations:
+                    key = ("clever", len(combination))
+                    totals[key] = totals.get(key, 0) + 1
+                return totals
+
+            if not self.group_by_length:
+                return totals
+
+            exact_letters = "".join(
+                ch
+                for ch in self.applied_query["available_letters"].lower()
+                if ("a" <= ch <= "z") or ch in ("?", "*")
+            )
+            valid_word = None
+            if exact_letters and "?" not in exact_letters and "*" not in exact_letters:
+                valid_word = next(
+                    (rec for rec in self.current_matches if rec.word == exact_letters),
+                    None,
+                )
+            for record in self.current_matches:
+                if record is not valid_word:
+                    key = ("length", record.length)
+                    totals[key] = totals.get(key, 0) + 1
+            return totals
+
+        def _group_visible_count(
+            self,
+            key: Tuple[str, int],
+            total_count: int,
+            group_count: int,
+        ) -> int:
+            default_limit = max(1, PAGE_SIZE // max(group_count, 1))
+            return min(
+                total_count,
+                self.group_visible_limits.get(key, default_limit),
+            )
+
+        def _sync_group_collapse_button(self) -> None:
+            button = self.btn_collapse_groups
+            if button is None:
+                return
+            group_totals = self._get_active_group_totals()
+            if not group_totals:
+                button.set_visibility(False)
+                return
+
+            collapsed = all(
+                key[1]
+                in (
+                    self.collapsed_clever_groups
+                    if key[0] == "clever"
+                    else self.collapsed_lengths
+                )
+                for key in group_totals
+            )
+            button.set_text("EXPAND GROUPS" if collapsed else "COLLAPSE GROUPS")
+            button.set_visibility(True)
+            color = "#1565C0" if collapsed else "#6A1B9A"
+            button.style(
+                f"background-color: {color} !important; "
+                f"border-color: {color} !important; "
+                "color: #FFFFFF !important;"
+            )
+
+        def on_toggle_all_groups(self) -> None:
+            group_totals = self._get_active_group_totals()
+            if not group_totals:
+                return
+
+            collapsed = all(
+                key[1]
+                in (
+                    self.collapsed_clever_groups
+                    if key[0] == "clever"
+                    else self.collapsed_lengths
+                )
+                for key in group_totals
+            )
+            for mode, group_key in group_totals:
+                group_set = (
+                    self.collapsed_clever_groups
+                    if mode == "clever"
+                    else self.collapsed_lengths
+                )
+                if collapsed:
+                    group_set.discard(group_key)
+                else:
+                    group_set.add(group_key)
+            self._sync_group_collapse_button()
+            self._render_results()
+
+        def _load_more_group(
+            self, key: Tuple[str, int], total_count: int
+        ) -> None:
+            group_count = len(self._get_active_group_totals())
+            current = self._group_visible_count(key, total_count, group_count)
+            self.group_visible_limits[key] = min(
+                total_count, current + PAGE_SIZE
+            )
+            self._render_results_preserving_scroll()
+
+        def _load_more_grouped_results(self) -> None:
+            totals = self._get_active_group_totals()
+            if not totals:
+                return
+            group_count = len(totals)
+            step = max(1, PAGE_SIZE // group_count)
+            for key, total_count in totals.items():
+                current = self._group_visible_count(
+                    key, total_count, group_count
+                )
+                self.group_visible_limits[key] = min(
+                    total_count, current + step
+                )
+            self._render_results_preserving_scroll()
+
+        def _show_all_grouped_results(self) -> None:
+            self.group_visible_limits.update(self._get_active_group_totals())
+            self._render_results_preserving_scroll()
+
+        def _render_grouped_pagination_footer(self) -> None:
+            totals = self._get_active_group_totals()
+            if not totals:
+                return
+            group_count = len(totals)
+            visible_count = sum(
+                self._group_visible_count(key, total_count, group_count)
+                for key, total_count in totals.items()
+            )
+            total_count = sum(totals.values())
+            remaining = total_count - visible_count
+            if remaining <= 0:
+                return
+
+            step = max(1, PAGE_SIZE // group_count)
+            next_batch = sum(
+                min(
+                    step,
+                    total - self._group_visible_count(key, total, group_count),
+                )
+                for key, total in totals.items()
+            )
+            noun = "combinations" if self.clever_mode else "words"
+            with ui.row().classes(
+                "w-full items-center justify-center gap-3 pt-3 pb-1"
+            ):
+                ui.label(
+                    f"Showing {visible_count:,} of {total_count:,} {noun}"
+                ).classes("text-xs font-bold").style("color: #595959;")
+                ui.button(
+                    f"SHOW {next_batch:,} MORE",
+                    on_click=self._load_more_grouped_results,
+                ).props("unelevated dense").classes("babble-pill px-4")
+                if remaining <= 600:
+                    ui.button(
+                        f"SHOW ALL ({total_count:,})",
+                        on_click=self._show_all_grouped_results,
+                    ).props("unelevated dense").classes("babble-pill-blue px-4")
 
         def _get_length_options(self) -> Dict[str, str]:
             # Reordered: All lengths, 15, 14, 13, ... down to 2
@@ -1469,13 +2180,6 @@ def build_nicegui_app():
                     self.form_effect = ""
                     self.sel_effect.value = ""
                 self.sel_effect.update()
-
-                sort_opts = self._get_sort_options()
-                self.sel_sort.options = sort_opts
-                if self.sort_by not in sort_opts:
-                    self.sort_by = "points"
-                    self.sel_sort.value = "points"
-                self.sel_sort.update()
             finally:
                 self._suppress_events = False
 
@@ -1530,26 +2234,31 @@ def build_nicegui_app():
             self._update_pending_indicator()
 
         # ---- Immediate-Update Triggers ----
-        def on_category_change(self, e) -> None:
-            if self._suppress_events:
-                return
-            self.kind_filter = str(e.value or "ALL")
-            self._suppress_events = True
-            try:
-                sort_opts = self._get_sort_options()
-                self.sel_sort.options = sort_opts
-                if self.sort_by not in sort_opts:
-                    self.sort_by = "points"
-                    self.sel_sort.value = "points"
-                self.sel_sort.update()
-            finally:
-                self._suppress_events = False
+        def on_toggle_kind(self, kind: str) -> None:
+            if kind in self.selected_kinds:
+                self.selected_kinds.remove(kind)
+            else:
+                self.selected_kinds.add(kind)
+            self._sync_kind_filter_controls()
             self.run_applied_search(reset_pagination=True)
 
-        def on_sort_change(self, e) -> None:
-            if self._suppress_events:
-                return
-            self.sort_by = str(e.value or "points")
+        def on_toggle_two_letter_words(self) -> None:
+            self.show_two_letter_words = not self.show_two_letter_words
+            self._sync_pill_style(
+                self.btn_two_letter_words, self.show_two_letter_words
+            )
+            self.run_applied_search(reset_pagination=True)
+
+        def on_toggle_clever_mode(self) -> None:
+            self.clever_mode = not self.clever_mode
+            self._sync_clever_mode_button()
+            self.run_applied_search(reset_pagination=True)
+
+        def on_toggle_sort_mode(self) -> None:
+            self.sort_mode = (
+                "alphabetical" if self.sort_mode == "value" else "value"
+            )
+            self._sync_sort_mode_button()
             self.run_applied_search(reset_pagination=True)
 
         def on_order_change(self, e) -> None:
@@ -1566,6 +2275,27 @@ def build_nicegui_app():
         def on_toggle_favorites_only(self) -> None:
             self.favorites_only = not self.favorites_only
             self._sync_favorite_style(self.favorites_only)
+            self.run_applied_search(reset_pagination=True)
+
+        def on_toggle_stat_filter(self, stat_key: str) -> None:
+            if stat_key in self.selected_stat_filters:
+                self.selected_stat_filters.remove(stat_key)
+            else:
+                self.selected_stat_filters.add(stat_key)
+
+            self.sort_mode = "value"
+            selected = [
+                key for key, _, _, _ in STAT_FILTERS
+                if key in self.selected_stat_filters
+            ]
+            if len(selected) > 1:
+                self.sort_by = "combined_stats"
+            elif selected:
+                self.sort_by = selected[0]
+            else:
+                self.sort_by = "points"
+
+            self._sync_sort_mode_button()
             self.run_applied_search(reset_pagination=True)
 
         def on_find_words(self) -> None:
@@ -1585,6 +2315,8 @@ def build_nicegui_app():
                 self.form_in_order = False
                 self.form_exact_amount = False
                 self.favorites_only = False
+                self.selected_stat_filters.clear()
+                self.sort_by = "points"
 
                 self.inp_letters.value = ""
                 self.inp_contains.value = ""
@@ -1662,7 +2394,21 @@ def build_nicegui_app():
             else:
                 self.favorites.add(word)
                 is_fav = True
-            save_favorites_txt(self.favorites_path, self.favorites)
+            self.user_data["favorites"] = sorted(self.favorites)
+            try:
+                save_user_data_json(self.user_data_path, self.user_data)
+                self.user_data_source = self.user_data_path.name
+                self.user_data_size_bytes = self.user_data_path.stat().st_size
+                self.user_data_loaded = True
+                self._set_settings_file_status(
+                    "user_data",
+                    self.user_data_size_bytes,
+                    self.user_data_loaded,
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                self.user_data_loaded = False
+                self._set_settings_file_status("user_data", None, False)
+                ui.notify(f"Could not save user data: {exc}", type="negative")
             self._update_favorites_banner()
 
             if self.favorites_only:
@@ -1675,15 +2421,54 @@ def build_nicegui_app():
 
         # ---- Search & Render ----
         def run_applied_search(self, reset_pagination: bool = True) -> None:
+            q = self.applied_query
             if not GLOBAL_DB.units:
                 self.current_matches = []
-                self.lbl_result_count.set_text("0 words loaded")
+                self.current_combinations = []
+                self.stat_filter_counts = {}
+                self.group_visible_limits.clear()
+                self._update_stat_filter_controls()
+                self.lbl_result_count.set_text(
+                    "0 combinations found"
+                    if self.clever_mode
+                    else "0 words loaded"
+                )
+                self._sync_group_collapse_button()
                 self._update_favorites_banner()
                 self._render_results()
                 return
 
-            q = self.applied_query
-            matches = GLOBAL_DB.search(
+            clean_rack = any(
+                ("a" <= ch.lower() <= "z") or ch in ("?", "*")
+                for ch in q["available_letters"]
+            )
+            if self.clever_mode and not clean_rack:
+                self.current_matches = []
+                self.current_combinations = []
+                self.stat_filter_counts = {}
+                self._update_stat_filter_controls()
+                if reset_pagination:
+                    self.visible_limit = PAGE_SIZE
+                    self.collapsed_lengths.clear()
+                    self.collapsed_clever_groups.clear()
+                    self.group_visible_limits.clear()
+                if self.lbl_result_count is not None:
+                    self.lbl_result_count.set_text("0 combinations found")
+                self._sync_group_collapse_button()
+                self._update_favorites_banner()
+                self._render_results()
+                return
+
+            base_sort_by = (
+                "alphabetical"
+                if self.sort_mode == "alphabetical"
+                else (
+                    "points"
+                    if self.sort_by == "combined_stats"
+                    else self.sort_by
+                )
+            )
+            base_matches = GLOBAL_DB.search(
                 available_letters=q["available_letters"],
                 starts_with=q["starts_with"],
                 ends_with=q["ends_with"],
@@ -1691,27 +2476,87 @@ def build_nicegui_app():
                 in_order=q["in_order"],
                 exact_amount=q["exact_amount"],
                 length_filter=q["length_filter"],
-                kind_filter=self.kind_filter,
                 effect_filter=q["effect_filter"],
                 favorites_only=self.favorites_only,
                 favorites=self.favorites,
-                sort_by=self.sort_by,
+                kind_filters=self.selected_kinds,
+                sort_by=base_sort_by,
                 descending=self.descending,
                 group_by_length=self.group_by_length,
+                include_two_letter_words=self.show_two_letter_words,
             )
 
+            stat_counts = [0] * len(STAT_FILTERS)
+            for rec in base_matches:
+                mask = rec._positive_stat_mask
+                while mask:
+                    bit = mask & -mask
+                    stat_counts[bit.bit_length() - 1] += 1
+                    mask ^= bit
+            self.stat_filter_counts = {
+                stat_key: stat_counts[index]
+                for index, (stat_key, _, _, _) in enumerate(STAT_FILTERS)
+            }
+            self._update_stat_filter_controls()
+
+            selected_stats = [
+                key
+                for key, _, _, _ in STAT_FILTERS
+                if key in self.selected_stat_filters
+            ]
+            matches = base_matches
+            if selected_stats:
+                matches = [
+                    rec
+                    for rec in base_matches
+                    if all(
+                        rec.has_positive_stat_change(key)
+                        for key in selected_stats
+                    )
+                ]
+                if (
+                    len(selected_stats) > 1
+                    and self.sort_by == "combined_stats"
+                    and self.sort_mode == "value"
+                ):
+                    self._sort_combined_results(
+                        matches, base_matches, selected_stats
+                    )
+
             self.current_matches = matches
+            self.current_combinations = (
+                find_exact_word_combinations(
+                    matches,
+                    q["available_letters"],
+                    self.show_two_letter_words,
+                )
+                if self.clever_mode
+                else []
+            )
             if reset_pagination:
                 self.visible_limit = PAGE_SIZE
                 self.collapsed_lengths.clear()
+                self.collapsed_clever_groups.clear()
+                self.group_visible_limits.clear()
 
-            n = len(matches)
-            word_lbl = "word" if n == 1 else "words"
-            self.lbl_result_count.set_text(f"{n:,} {word_lbl} found")
+            if self.clever_mode:
+                n = len(self.current_combinations)
+                self.lbl_result_count.set_text(
+                    f"{n:,} combination{'s' if n != 1 else ''} found"
+                )
+            else:
+                n = len(matches)
+                word_lbl = "word" if n == 1 else "words"
+                self.lbl_result_count.set_text(f"{n:,} {word_lbl} found")
+            self._sync_group_collapse_button()
             self._update_favorites_banner()
             self._render_results()
 
         def _load_more(self, amount: int = PAGE_SIZE) -> None:
+            self.visible_limit += amount
+            self._render_results_preserving_scroll()
+
+        def _render_results_preserving_scroll(self) -> None:
             ui.run_javascript(
                 "const x = window.scrollX, y = window.scrollY; "
                 "const restore = () => window.scrollTo(x, y); "
@@ -1721,19 +2566,35 @@ def build_nicegui_app():
                 "setTimeout(restore, 150); "
                 "setTimeout(restore, 350);"
             )
-            self.visible_limit += amount
             self._render_results()
-            ui.run_javascript(
-                "requestAnimationFrame(() => window.__babbleRestoreScroll?.()); "
-                "setTimeout(() => window.__babbleRestoreScroll?.(), 100); "
-                "setTimeout(() => window.__babbleRestoreScroll?.(), 300);"
-            )
 
         def _render_results(self) -> None:
             self.results_container.clear()
             matches = self.current_matches
 
             with self.results_container:
+                if self.clever_mode:
+                    if not self.current_combinations:
+                        with ui.column().classes("w-full items-center py-10"):
+                            ui.label("No combinations found.").classes(
+                                "text-base font-bold"
+                            ).style("color: #595959;")
+                            clean_rack = any(
+                                ("a" <= ch.lower() <= "z") or ch in ("?", "*")
+                                for ch in self.applied_query["available_letters"]
+                            )
+                            message = (
+                                "No combination uses every available letter."
+                                if clean_rack
+                                else "Enter available letters and click FIND WORDS."
+                            )
+                            ui.label(message).classes("text-sm").style(
+                                "color: #777777;"
+                            )
+                        return
+                    self._render_clever_results()
+                    return
+
                 if not matches:
                     with ui.column().classes("w-full items-center py-10"):
                         ui.label("No matching words found.").classes(
@@ -1744,41 +2605,68 @@ def build_nicegui_app():
                         ).classes("text-sm").style("color: #777777;")
                     return
 
-                visible = matches[: self.visible_limit]
                 active_stat = (
                     self.sort_by
-                    if self.sort_by not in ("points", "alphabetical")
+                    if self.sort_mode == "value"
+                    and self.sort_by not in (
+                        "points",
+                        "combined_stats",
+                    )
                     else None
                 )
+                exact_letters = "".join(
+                    ch
+                    for ch in self.applied_query["available_letters"].lower()
+                    if ("a" <= ch <= "z") or ch in ("?", "*")
+                )
+                valid_word = None
+                if exact_letters and "?" not in exact_letters and "*" not in exact_letters:
+                    valid_word = next(
+                        (rec for rec in matches if rec.word == exact_letters), None
+                    )
+
+                if valid_word is not None:
+                    ui.label(f"{valid_word.word_upper} is a valid word").classes(
+                        "text-sm font-bold"
+                    ).style("color: #087007;")
+                    self._render_unit_box(valid_word, active_stat)
+
+                remaining_matches = [
+                    rec for rec in matches if rec is not valid_word
+                ]
 
                 if self.group_by_length:
-                    # Precompute total count per length across ALL matches (not just visible slice)
-                    total_per_len: Dict[int, int] = {}
-                    for r in matches:
-                        total_per_len[r.length] = total_per_len.get(r.length, 0) + 1
+                    grouped_matches: Dict[int, List[UnitRecord]] = {}
+                    for record in remaining_matches:
+                        grouped_matches.setdefault(record.length, []).append(record)
 
-                    i = 0
-                    n_vis = len(visible)
-                    while i < n_vis:
-                        length = visible[i].length
-                        j = i + 1
-                        while j < n_vis and visible[j].length == length:
-                            j += 1
-                        group_items = visible[i:j]
+                    group_count = len(grouped_matches)
+                    for length, group_items in grouped_matches.items():
+                        group_key = ("length", length)
+                        visible_count = self._group_visible_count(
+                            group_key, len(group_items), group_count
+                        )
                         self._render_length_group(
                             length,
-                            group_items,
-                            total_per_len[length],
+                            group_items[:visible_count],
+                            len(group_items),
                             active_stat,
                         )
-                        i = j
-                else:
-                    with ui.column().classes("w-full gap-1.5"):
-                        for rec in visible:
-                            self._render_unit_box(rec, active_stat)
+                    self._render_grouped_pagination_footer()
+                    return
+
+                visible_limit = self.visible_limit - (
+                    1 if valid_word is not None else 0
+                )
+                visible = remaining_matches[:visible_limit]
+                with ui.column().classes("w-full gap-1.5"):
+                    for rec in visible:
+                        self._render_unit_box(rec, active_stat)
 
                 # Load-more footer when results exceed current page limit
-                remaining = len(matches) - len(visible)
+                remaining = len(matches) - len(visible) - (
+                    1 if valid_word is not None else 0
+                )
                 if remaining > 0:
                     with ui.row().classes(
                         "w-full items-center justify-center gap-3 pt-3 pb-1"
@@ -1795,6 +2683,117 @@ def build_nicegui_app():
                                 f"SHOW ALL ({len(matches):,})",
                                 on_click=lambda: self._load_more(remaining),
                             ).props("unelevated dense").classes("babble-pill-blue px-4")
+
+        def _render_clever_results(self) -> None:
+            combinations_by_word_count: Dict[
+                int, List[Tuple[UnitRecord, ...]]
+            ] = {}
+            for combination in self.current_combinations:
+                combinations_by_word_count.setdefault(
+                    len(combination), []
+                ).append(combination)
+
+            group_count = len(combinations_by_word_count)
+            for word_count in sorted(combinations_by_word_count):
+                group_key = ("clever", word_count)
+                combinations = combinations_by_word_count[word_count]
+                visible_count = self._group_visible_count(
+                    group_key, len(combinations), group_count
+                )
+                self._render_clever_group(
+                    word_count,
+                    combinations[:visible_count],
+                    len(combinations),
+                )
+            self._render_grouped_pagination_footer()
+
+        def _render_clever_group(
+            self,
+            word_count: int,
+            combinations: List[Tuple[UnitRecord, ...]],
+            total_count: int,
+        ) -> None:
+            is_collapsed = word_count in self.collapsed_clever_groups
+            with ui.column().classes("w-full gap-1.5 mb-2"):
+                header = ui.row().classes(
+                    "w-full items-center justify-between babble-group-bar"
+                )
+                with header:
+                    with ui.row().classes("items-center gap-2"):
+                        arrow_lbl = ui.label("▸" if is_collapsed else "▾").classes(
+                            "text-sm font-bold"
+                        ).style("color: #222222; width: 12px;")
+                        label = "WORD" if word_count == 1 else "WORDS"
+                        ui.label(
+                            f"{word_count} {label} PER COMBINATION"
+                        ).classes("text-xs font-bold tracking-wide").style(
+                            "color: #222222;"
+                        )
+                    count_txt = (
+                        f"{len(combinations):,} / {total_count:,}"
+                        if len(combinations) < total_count
+                        else f"{total_count:,}"
+                    )
+                    ui.label(count_txt).classes("text-xs font-bold").style(
+                        "color: #595959;"
+                    )
+
+                body = ui.column().classes("w-full gap-1.5")
+                body.set_visibility(not is_collapsed)
+                with body:
+                    for combination in combinations:
+                        with ui.row().classes(
+                            "w-full items-center gap-2 flex-wrap px-3 py-2 "
+                            "rounded border bg-white"
+                        ):
+                            for index, rec in enumerate(combination):
+                                if index:
+                                    ui.label("+").classes(
+                                        "text-sm font-bold"
+                                    ).style("color: #777777;")
+                                meta = (
+                                    KIND_META["CURSED"]
+                                    if rec.is_cursed
+                                    else KIND_META.get(
+                                        rec.kind, KIND_META["TOWER"]
+                                    )
+                                )
+                                with ui.row().classes("items-baseline gap-1"):
+                                    ui.label(rec.word_upper).classes(
+                                        "text-sm font-bold"
+                                    ).style(f"color: {meta['color']};")
+                                    ui.label(f"({meta['display']})").classes(
+                                        "text-xs font-bold"
+                                    ).style(f"color: {meta['color']};")
+
+                    if len(combinations) < total_count:
+                        remaining = total_count - len(combinations)
+                        ui.button(
+                            f"SHOW {min(PAGE_SIZE, remaining)} MORE",
+                            on_click=lambda _=None, key=("clever", word_count), total=total_count: self._load_more_group(
+                                key, total
+                            ),
+                        ).props("unelevated dense").classes(
+                            "babble-pill px-4 self-center"
+                        )
+
+                def toggle_group(
+                    _=None,
+                    count=word_count,
+                    group_body=body,
+                    arrow=arrow_lbl,
+                ):
+                    if count in self.collapsed_clever_groups:
+                        self.collapsed_clever_groups.remove(count)
+                        group_body.set_visibility(True)
+                        arrow.set_text("▾")
+                    else:
+                        self.collapsed_clever_groups.add(count)
+                        group_body.set_visibility(False)
+                        arrow.set_text("▸")
+                    self._sync_group_collapse_button()
+
+                header.on("click", toggle_group)
 
         def _render_length_group(
             self,
@@ -1830,8 +2829,18 @@ def build_nicegui_app():
                 with body:
                     for rec in items:
                         self._render_unit_box(rec, active_stat)
+                    if len(items) < total_count:
+                        remaining = total_count - len(items)
+                        ui.button(
+                            f"SHOW {min(PAGE_SIZE, remaining)} MORE",
+                            on_click=lambda _=None, key=("length", length), total=total_count: self._load_more_group(
+                                key, total
+                            ),
+                        ).props("unelevated dense").classes(
+                            "babble-pill px-4 self-center"
+                        )
 
-                def toggle_group(_e=None, L=length, b=body, a=arrow_lbl):
+                def toggle_group(_=None, L=length, b=body, a=arrow_lbl):
                     if L in self.collapsed_lengths:
                         self.collapsed_lengths.remove(L)
                         b.set_visibility(True)
@@ -1840,6 +2849,7 @@ def build_nicegui_app():
                         self.collapsed_lengths.add(L)
                         b.set_visibility(False)
                         a.set_text("▸")
+                    self._sync_group_collapse_button()
 
                 header.on("click", toggle_group)
 
@@ -1942,19 +2952,9 @@ def build_nicegui_app():
                             def_btn.tooltip(f"Open OneLook definition for '{rec.word}'")
                             def_btn.on("click.stop", lambda _e: None)
 
-                        # Rightmost stack: [optional active stat] + [PTS tile] on top, [X letters] directly below PTS
+                        # Rightmost stack: [PTS tile] on top, [X letters] directly below PTS
                         with ui.column().classes("items-end gap-1"):
                             with ui.row().classes("items-center gap-1.5 no-wrap"):
-                                if active_stat:
-                                    sv = rec.get_stat_value(active_stat)
-                                    short_lbl = STAT_SHORT_LABELS.get(
-                                        active_stat, pretty_name(active_stat).upper()
-                                    )
-                                    sv_txt = (
-                                        f"{short_lbl}: {fmt_num(sv, 2) if sv is not None else '—'}"
-                                    )
-                                    ui.label(sv_txt).classes("babble-stat-chip")
-
                                 ui.label(f"{rec.scrabble} PTS").classes(
                                     "babble-pts-tile"
                                 )
@@ -2001,6 +3001,10 @@ def build_nicegui_app():
                             ui.label(pretty_name(name)).classes("text-sm").style(
                                 "color: #000000;"
                             )
+                            if name == "crit":
+                                ui.label(f"({format_crit_summary(val)})").classes(
+                                    "text-sm"
+                                ).style("color: #000000;")
 
                     if rec.is_cursed and rec.curse_effects:
                         ui.separator().style("background-color: #C4C4C4; margin: 4px 0;")
@@ -2015,8 +3019,10 @@ def build_nicegui_app():
                     ui.label("TOWER STATS").classes("babble-field-lbl")
 
                     dmg_t = self._cmp_tone(rec.damage, TOWER_DEFAULTS["damage"])
-                    dps_t = self._cmp_tone(rec.dps, 5.0)
-                    spd_t = self._cmp_tone(rec.attack_speed, 1.0)
+                    dps_t = self._cmp_tone(rec.dps, 5.5)
+                    spd_t = self._cmp_tone(
+                        rec.attack_speed, TOWER_DEFAULTS["attackSpeed"]
+                    )
                     rng_t = self._cmp_tone(rec.range, TOWER_DEFAULTS["range"])
                     hp_t = self._cmp_tone(rec.health, TOWER_DEFAULTS["health"])
                     arm_t = self._cmp_tone(rec.armor, TOWER_DEFAULTS["armor"])
@@ -2026,7 +3032,7 @@ def build_nicegui_app():
                         ("DPS", fmt_num(rec.dps, 2), dps_t),
                         (
                             "Attack Speed",
-                            f"{fmt_num(rec.attack_speed, 2)}/s ({fmt_num(rec.attack_interval, 3)}s)",
+                            f"{fmt_num(rec.attack_speed, 2)} ({fmt_num(rec.attacks_per_second, 2)}/sec)",
                             spd_t,
                         ),
                         ("Range", fmt_num(rec.range, 2), rng_t),
@@ -2113,6 +3119,10 @@ def build_nicegui_app():
                                     ui.label(f"({display_op})").classes("text-xs").style(
                                         "color: #666666;"
                                     )
+                                if stat == "crit":
+                                    ui.label(f"({format_crit_summary(val)})").classes(
+                                        "text-sm"
+                                    ).style("color: #000000;")
 
         def _render_stat_grid(self, items: List[Tuple[str, str, str]]) -> None:
             with ui.element("div").classes(
@@ -2132,83 +3142,281 @@ def build_nicegui_app():
                 return "neg"
             return "neutral"
 
-        # ---- Load JSON Dialog ----
-        def _build_load_dialog(self) -> None:
-            self.load_dialog = ui.dialog()
-            with self.load_dialog, ui.card().classes("w-[480px] max-w-full").style(
-                "background: #E4E4E4; border: 1px solid #B7B7B7;"
-            ):
-                ui.label("LOAD UNITS JSON").classes("text-sm font-bold").style(
+        # ---- Settings Dialog ----
+        def _set_settings_file_status(
+            self, key: str, size_bytes: Optional[int], loaded: bool
+        ) -> None:
+            if loaded and size_bytes is not None:
+                text = format_file_size(size_bytes)
+            else:
+                loaded = False
+                text = "File not loaded"
+            self.settings_file_status[key] = (text, loaded)
+            label = self.settings_file_labels.get(key)
+            if label is not None:
+                label.set_text(text)
+                color = "#2E7D32" if loaded else "#B71C1C"
+                label.style(f"background-color: {color} !important;")
+            upload = self.settings_upload_boxes.get(key)
+            if upload is not None:
+                upload.classes(
+                    remove="babble-file-loaded babble-file-not-loaded",
+                    add="babble-file-loaded" if loaded else "babble-file-not-loaded",
+                )
+
+            self._update_main_file_status()
+
+        def _file_load_summary(self) -> Tuple[str, bool]:
+            labels = {
+                "units": "UNITS JSON",
+                "cursed": "CURSED WORDS JSON",
+                "blacklist": "BLACKLIST TXT",
+                "user_data": "USER DATA JSON",
+            }
+            missing = [
+                labels[key]
+                for key, (_, loaded) in self.settings_file_status.items()
+                if not loaded
+            ]
+            if not missing:
+                return "All files loaded", True
+            return f"Missing: {', '.join(missing)}", False
+
+        def _build_settings_dialog(self) -> None:
+            self.settings_dialog = ui.dialog()
+            with self.settings_dialog, ui.card().classes(
+                "w-[760px] max-w-full"
+            ).style("background: #F4F4F4; border: 1px solid #B7B7B7;"):
+                ui.label("OPTIONS").classes("text-sm font-bold").style(
                     "color: #222222;"
                 )
                 ui.label(
-                    "Enter a local path to units.json or upload a JSON file directly:"
+                    "All files are required to have a complete wordlist."
                 ).classes("text-xs").style("color: #595959;")
 
-                path_input = (
-                    ui.input(
-                        value=GLOBAL_DB.source_path,
-                        placeholder="Path to units.json…",
-                    )
-                    .props("outlined dense")
-                    .classes("w-full babble-input")
+                def add_file_loader(
+                    key: str,
+                    title: str,
+                    description: str,
+                    accept: str,
+                    handler,
+                ) -> None:
+                    with ui.column().classes("w-full gap-1"):
+                        ui.label(title).classes("text-xs font-bold").style(
+                            "color: #222222;"
+                        )
+                        ui.label(description).classes("text-xs leading-relaxed").style(
+                            "color: #595959;"
+                        )
+                        with ui.row().classes(
+                            "w-full items-center justify-between gap-2 flex-wrap"
+                        ):
+                            status_text, loaded = self.settings_file_status[key]
+                            status_label = ui.label(status_text).classes(
+                                "babble-file-status text-xs"
+                            )
+                            status_label.style(
+                                "background-color: "
+                                f"{'#2E7D32' if loaded else '#B71C1C'} !important;"
+                            )
+                            self.settings_file_labels[key] = status_label
+                            upload = ui.upload(
+                                label="LOAD",
+                                auto_upload=True,
+                                max_file_size=100_000_000,
+                                on_upload=handler,
+                            ).props(f'accept="{accept}" flat bordered').classes(
+                                "w-40 babble-file-upload"
+                            )
+                            self.settings_upload_boxes[key] = upload
+                            size_by_key = {
+                                "units": GLOBAL_DB.source_size_bytes,
+                                "cursed": GLOBAL_DB.extra_source_size_bytes,
+                                "blacklist": GLOBAL_DB.blacklist_size_bytes,
+                                "user_data": self.user_data_size_bytes,
+                            }
+                            self._set_settings_file_status(
+                                key,
+                                size_by_key[key],
+                                loaded,
+                            )
+                    ui.separator().style("background-color: #C4C4C4;")
+
+                add_file_loader(
+                    "units",
+                    "UNITS JSON",
+                    r"The file that contains most of the games words and their stats. This is found inside the game files in Towers of Babble\TowersOfBabble_Data\StreamingAssets.",
+                    ".json",
+                    self._handle_units_upload,
+                )
+                add_file_loader(
+                    "cursed",
+                    "CURSED WORDS JSON",
+                    "A file that was made by extracting data from the game containing the stats for Cursed Towers. This file does not exist implicitly inside the game files. (optional)",
+                    ".json",
+                    self._handle_cursed_upload,
+                )
+                add_file_loader(
+                    "blacklist",
+                    "BLACKLIST TXT",
+                    r"The file that contains the words the developer has blacklisted and therefore do not exist inside the game. This is found inside the game files in Towers of Babble\TowersOfBabble_Data\StreamingAssets. (optional, but will show invalid words in search result)",
+                    ".txt",
+                    self._handle_blacklist_upload,
+                )
+                add_file_loader(
+                    "user_data",
+                    "USER DATA JSON",
+                    "A file storing your favorites.",
+                    ".json",
+                    self._handle_user_data_upload,
                 )
 
-                def load_from_path():
-                    p = str(path_input.value or "").strip().strip('"')
-                    if not p or not os.path.isfile(p):
-                        ui.notify(f"File not found: {p}", type="negative")
-                        return
-                    try:
-                        count = GLOBAL_DB.load_file(p)
-                        curse_path = Path(p).with_name("cursed_words.json")
-                        if curse_path.is_file():
-                            count += GLOBAL_DB.load_extra_file(str(curse_path))
-                        self._on_new_db_loaded(os.path.basename(p), count)
-                        self.load_dialog.close()
-                    except Exception as exc:
-                        ui.notify(f"Failed to load JSON: {exc}", type="negative")
-
-                def handle_upload(e):
-                    try:
-                        raw_bytes = e.content.read()
-                        data = json.loads(raw_bytes.decode("utf-8"))
-                        count = GLOBAL_DB.load_data(data, source_label=e.name)
-                        self._on_new_db_loaded(e.name, count)
-                        self.load_dialog.close()
-                    except Exception as exc:
-                        ui.notify(f"Upload parse error: {exc}", type="negative")
-
-                with ui.row().classes("w-full justify-end gap-2 mt-1"):
-                    ui.button("LOAD PATH", on_click=load_from_path).props(
-                        "unelevated dense"
-                    ).classes("babble-pill-blue px-4")
-
-                ui.separator().style("background-color: #C4C4C4;")
-                ui.upload(
-                    label="Or drop / select units.json here",
-                    auto_upload=True,
-                    max_file_size=100_000_000,
-                    on_upload=handle_upload,
-                ).props('accept=".json" flat bordered').classes("w-full")
-
                 with ui.row().classes("w-full justify-end mt-2"):
-                    ui.button("CLOSE", on_click=self.load_dialog.close).props(
+                    ui.button("CLOSE", on_click=self.settings_dialog.close).props(
                         "unelevated dense"
                     ).classes("babble-pill px-4")
 
-        def _on_new_db_loaded(self, name: str, count: int) -> None:
-            self.lbl_file_status.set_text(f"{name} ({count:,} units)")
+        def _refresh_after_file_change(self) -> None:
             self._refresh_dynamic_dropdowns()
             self.applied_query = self._snapshot_form()
             self._update_pending_indicator()
             self.run_applied_search(reset_pagination=True)
-            ui.notify(f"Loaded {count:,} units from {name}", type="positive")
+
+        def _update_main_file_status(self) -> None:
+            if self.lbl_file_status is None:
+                return
+            text, loaded = self._file_load_summary()
+            self.lbl_file_status.set_text(text)
+            self.lbl_file_status.style(
+                f"color: {'#2E7D32' if loaded else '#B71C1C'} !important;"
+            )
+
+        def _handle_units_upload(self, e) -> None:
+            try:
+                raw_bytes = e.content.read()
+                data = json.loads(raw_bytes.decode("utf-8"))
+                validate_units_json(data)
+                count = GLOBAL_DB.load_data(
+                    data,
+                    source_label=e.name,
+                    source_size_bytes=len(raw_bytes),
+                )
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                self._set_settings_file_status("units", None, False)
+                e.sender.reset()
+                ui.notify(f"Could not load units JSON: {exc}", type="negative")
+                return
+
+            loaded = bool(GLOBAL_DB._base_records)
+            self._set_settings_file_status(
+                "units", len(raw_bytes), loaded
+            )
+            e.sender.reset()
+            self._refresh_after_file_change()
+            ui.notify(f"Loaded {count:,} units from {e.name}", type="positive")
+
+        def _handle_cursed_upload(self, e) -> None:
+            try:
+                raw_bytes = e.content.read()
+                data = json.loads(raw_bytes.decode("utf-8"))
+                validate_units_json(data, require_cursed=True)
+                count = GLOBAL_DB.load_extra_data(
+                    data,
+                    source_label=e.name,
+                    source_size_bytes=len(raw_bytes),
+                )
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                self._set_settings_file_status("cursed", None, False)
+                e.sender.reset()
+                ui.notify(f"Could not load cursed words JSON: {exc}", type="negative")
+                return
+
+            loaded = any(record.is_cursed for record in GLOBAL_DB._extra_records)
+            self._set_settings_file_status(
+                "cursed", len(raw_bytes), loaded
+            )
+            e.sender.reset()
+            self._refresh_after_file_change()
+            ui.notify(f"Loaded {count:,} cursed words from {e.name}", type="positive")
+
+        def _handle_blacklist_upload(self, e) -> None:
+            try:
+                raw_bytes = e.content.read()
+                contents = raw_bytes.decode("utf-8")
+                count = GLOBAL_DB.load_blacklist_data(
+                    contents,
+                    source_label=e.name,
+                    source_size_bytes=len(raw_bytes),
+                )
+            except (UnicodeDecodeError, OSError, TypeError, ValueError) as exc:
+                self._set_settings_file_status("blacklist", None, False)
+                e.sender.reset()
+                ui.notify(f"Could not load blacklist: {exc}", type="negative")
+                return
+
+            self._set_settings_file_status(
+                "blacklist", len(raw_bytes), GLOBAL_DB.blacklist_loaded
+            )
+            e.sender.reset()
+            self._refresh_after_file_change()
+            ui.notify(
+                f"Loaded blacklist with {len(GLOBAL_DB.blacklisted_words):,} "
+                f"entries; {count:,} units remain",
+                type="positive",
+            )
+
+        def _handle_user_data_upload(self, e) -> None:
+            try:
+                raw_bytes = e.content.read()
+                data = normalize_user_data(
+                    json.loads(raw_bytes.decode("utf-8"))
+                )
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                self._set_settings_file_status("user_data", None, False)
+                e.sender.reset()
+                ui.notify(f"Could not load user data JSON: {exc}", type="negative")
+                return
+
+            self.user_data = data
+            self.favorites = set(data["favorites"])
+            self.user_data_source = e.name
+            self.user_data_size_bytes = len(raw_bytes)
+            self.user_data_loaded = True
+            self._set_settings_file_status(
+                "user_data", len(raw_bytes), self.user_data_loaded
+            )
+            e.sender.reset()
+            self._refresh_after_file_change()
+            ui.notify(
+                f"Loaded user data with {len(self.favorites):,} favorites from {e.name}",
+                type="positive",
+            )
 
         # ---- Main Page Layout ----
         def build(self) -> None:
             ui.add_head_html(CUSTOM_CSS)
-            self._build_load_dialog()
+            self._build_settings_dialog()
+            assert self.settings_dialog is not None
 
             with ui.column().classes("w-full babble-shell gap-3"):
                 # ---- HEADER ----
@@ -2222,21 +3430,22 @@ def build_nicegui_app():
                                 "text-xl font-bold tracking-tight"
                             ).style("color: #595959;")
                         ui.label(
-                            "Enter available letters, then click find words! Made by Levi."
+                            "Enter available letters, then click FIND WORDS! Made by Levi."
                         ).classes("text-xs").style("color: #595959;")
 
                     with ui.column().classes("items-end gap-1"):
-                        ui.button("LOAD JSON", on_click=self.load_dialog.open).props(
-                            "unelevated dense"
-                        ).classes("babble-pill px-4")
-                        status_txt = (
-                            f"{os.path.basename(GLOBAL_DB.source_path)} ({len(GLOBAL_DB.units):,} units)"
-                            if GLOBAL_DB.units
-                            else "No units.json loaded — click LOAD JSON"
-                        )
+                        ui.button(
+                            icon="settings",
+                            on_click=self.settings_dialog.open,
+                        ).props("flat round dense").style(
+                            "width: 36px; height: 36px; color: #595959;"
+                        ).tooltip("Options and data files")
+                        status_txt, files_loaded = self._file_load_summary()
                         self.lbl_file_status = ui.label(status_txt).classes(
-                            "text-xs"
-                        ).style("color: #666666;")
+                            "text-xs text-right"
+                        ).style(
+                            f"color: {'#2E7D32' if files_loaded else '#B71C1C'};"
+                        )
 
                 ui.separator().style("background-color: #B7B7B7; height: 2px;")
 
@@ -2244,11 +3453,19 @@ def build_nicegui_app():
                 with ui.column().classes("w-full babble-panel gap-3"):
                     # Row 1: Available Letters + Find Words + Clear
                     with ui.column().classes("w-full gap-1"):
-                        with ui.row().classes("w-full items-center justify-between"):
+                        with ui.row().classes("w-full items-center gap-2 flex-wrap"):
                             ui.label("AVAILABLE LETTERS").classes("babble-field-lbl")
+                            self.lbl_fav_count = ui.label("").classes(
+                                "text-xs font-bold"
+                            ).style("color: #D93829;")
+                            self.lbl_fav_count.set_visibility(False)
+                            self.lbl_curse_count = ui.label("").classes(
+                                "text-xs font-bold"
+                            ).style("color: #6E13BE;")
+                            self.lbl_curse_count.set_visibility(False)
                             self.lbl_letter_count = ui.label(
                                 "0 letters (browsing all)"
-                            ).classes("text-xs").style("color: #666666;")
+                            ).classes("text-xs ml-auto").style("color: #666666;")
 
                         with ui.row().classes("w-full items-center gap-2 no-wrap"):
                             self.inp_letters = (
@@ -2269,59 +3486,112 @@ def build_nicegui_app():
 
                             ui.button("CLEAR", on_click=self.on_clear).props(
                                 "unelevated"
-                            ).classes("babble-pill px-4 h-10")
+                            ).classes("babble-pill babble-pill-blue-border px-4 h-10")
 
-                    # Row 2: Combined Show (Category) + Sort By + Order + Group Toggle + Favorites
+                    # Row 2: Category, sort, and order controls.
                     with ui.row().classes(
                         "w-full items-center justify-between gap-2 flex-wrap"
                     ):
                         with ui.row().classes("items-center gap-2 flex-wrap"):
-                            self.sel_category = (
-                                ui.select(
-                                    options={
-                                        "ALL": "All Types",
-                                        "TOWER": "Towers",
-                                        "HARVESTER": "Harvesters",
-                                        "MOD": "Mods",
-                                        "CURSED": "Cursed",
-                                    },
-                                    value=self.kind_filter,
-                                    label="Show",
-                                    on_change=self.on_category_change,
-                                )
-                                .props("outlined dense options-dense")
-                                .classes("babble-input w-32")
-                            )
+                            with ui.column().classes("gap-1"):
+                                ui.label("SHOW").classes("babble-field-lbl")
+                                with ui.row().classes("items-center gap-1"):
+                                    for kind, label in (
+                                        ("TOWER", "TOWERS"),
+                                        ("HARVESTER", "HARVESTERS"),
+                                        ("MOD", "MODS"),
+                                    ):
+                                        self.kind_buttons[kind] = (
+                                            ui.button(
+                                                label,
+                                                on_click=lambda _e, selected_kind=kind: self.on_toggle_kind(
+                                                    selected_kind
+                                                ),
+                                            )
+                                            .props("unelevated dense no-caps")
+                                            .classes("babble-pill px-3 h-9 text-xs")
+                                        )
+                            self._sync_kind_filter_controls()
 
-                            self.sel_sort = (
-                                ui.select(
-                                    options=self._get_sort_options(),
-                                    value=self.sort_by,
-                                    label="Sort by",
-                                    on_change=self.on_sort_change,
+                            with ui.column().classes("gap-1"):
+                                ui.label("SORT BY").classes("babble-field-lbl")
+                                self.btn_sort_mode = (
+                                    ui.button(
+                                        "VALUE", on_click=self.on_toggle_sort_mode
+                                    )
+                                    .props("unelevated dense no-caps")
+                                    .classes("babble-pill px-3 h-9 text-xs")
                                 )
-                                .props("outlined dense options-dense")
-                                .classes("babble-input w-48")
-                            )
+                            self._sync_sort_mode_button()
 
-                            self.sel_order = (
-                                ui.select(
-                                    options=["Descending", "Ascending"],
-                                    value="Descending",
-                                    label="Order",
-                                    on_change=self.on_order_change,
+                            with ui.column().classes("gap-1"):
+                                ui.label("ORDER").classes("babble-field-lbl")
+                                self.sel_order = (
+                                    ui.select(
+                                        options=["Descending", "Ascending"],
+                                        value="Descending",
+                                        on_change=self.on_order_change,
+                                    )
+                                    .props("outlined dense options-dense")
+                                    .classes("babble-input w-40")
                                 )
-                                .props("outlined dense options-dense")
-                                .classes("babble-input w-40")
-                            )
 
+                    # Row 3: Result toggles.
+                    with ui.row().classes(
+                        "w-full items-center justify-between gap-2 flex-wrap"
+                    ):
+                        with ui.row().classes("items-center gap-2 flex-wrap"):
                             self.btn_group = (
                                 ui.button(
                                     "GROUP BY LENGTH", on_click=self.on_toggle_group
                                 )
                                 .props("unelevated dense")
-                                .classes("babble-pill-blue px-3 h-9 text-xs")
+                                .classes("babble-pill px-3 h-9 text-xs")
                             )
+                            self.btn_collapse_groups = (
+                                ui.button(
+                                    "COLLAPSE GROUPS",
+                                    on_click=self.on_toggle_all_groups,
+                                )
+                                .props("unelevated dense no-caps")
+                                .classes("babble-pill px-3 h-9 text-xs")
+                            )
+                            self.btn_collapse_groups.tooltip(
+                                "Collapse or expand all grouped results"
+                            )
+                            self.btn_collapse_groups.set_visibility(False)
+                            self._sync_pill_style(
+                                self.btn_collapse_groups, False
+                            )
+
+                            self.btn_two_letter_words = (
+                                ui.button(
+                                    "2-LETTER WORDS",
+                                    on_click=self.on_toggle_two_letter_words,
+                                )
+                                .props("unelevated dense no-caps")
+                                .classes("babble-pill px-3 h-9 text-xs")
+                            )
+                            self.btn_two_letter_words.tooltip(
+                                "Toggle whether 2-letter words appear in results"
+                            )
+                            self.btn_clever_mode = (
+                                ui.button(
+                                    "CLEVER MODE",
+                                    on_click=self.on_toggle_clever_mode,
+                                )
+                                .props("unelevated dense no-caps")
+                                .classes("babble-pill px-3 h-9 text-xs")
+                            )
+                            self.btn_clever_mode.tooltip(
+                                "Show word combinations that use every available letter exactly."
+                            )
+                            self._sync_pill_style(self.btn_group, False)
+                            self._sync_pill_style(
+                                self.btn_two_letter_words,
+                                self.show_two_letter_words,
+                            )
+                            self._sync_clever_mode_button()
 
                         self.btn_favorites = (
                             ui.button(
@@ -2334,7 +3604,7 @@ def build_nicegui_app():
 
                     ui.separator().style("background-color: #C8C8C8;")
 
-                    # Row 3: CONTAINS + In Order + Exact Amount (deferred until Find Words)
+                    # Row 4: CONTAINS + In Order + Exact Amount (deferred until Find Words)
                     with ui.column().classes("w-full gap-1"):
                         ui.label("CONTAINS").classes("babble-field-lbl")
                         with ui.row().classes("w-full items-center gap-2 no-wrap"):
@@ -2366,7 +3636,6 @@ def build_nicegui_app():
                                 .classes("babble-pill px-3 h-9 text-xs")
                             )
 
-                            self._sync_pill_style(self.btn_group, True)
                             self._sync_pill_style(self.btn_in_order, False)
                             self._sync_pill_style(self.btn_exact, False)
 
@@ -2434,20 +3703,18 @@ def build_nicegui_app():
 
                 # ---- RESULTS PANEL ----
                 with ui.column().classes("w-full babble-panel gap-2"):
-                    # Results Header: RESULTS  |  ♥ X favorites (only when >0)  |  X words found
+                    # Results title/count row followed by stat filter buttons.
                     with ui.row().classes(
                         "w-full items-center justify-between gap-2 pb-1"
                     ):
                         ui.label("RESULTS").classes("babble-field-lbl")
-
-                        self.lbl_fav_count = ui.label("").classes(
-                            "text-xs font-bold"
-                        ).style("color: #D93829;")
-                        self.lbl_fav_count.set_visibility(False)
-
                         self.lbl_result_count = ui.label("0 words found").classes(
-                            "text-xs font-bold"
+                            "ml-auto text-xs font-bold whitespace-nowrap"
                         ).style("color: #595959;")
+
+                    self.stat_filter_container = ui.row().classes(
+                        "w-full items-center gap-1 flex-wrap"
+                    )
 
                     ui.separator().style("background-color: #C8C8C8;")
 
@@ -2471,7 +3738,7 @@ def main():
     if loaded:
         print(f"Loaded {len(GLOBAL_DB.units):,} units from {loaded}")
     else:
-        print("No units.json found automatically — use the LOAD JSON button in the UI.")
+        print("No units.json found automatically — use the settings menu to load files.")
 
     ui = build_nicegui_app()
     app.native.window_args["min_size"] = (980, 860)
