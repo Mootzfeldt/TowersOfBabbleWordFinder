@@ -9,6 +9,20 @@ This is a word finder inspired by similar programs for Scrabble, but specificall
 - Sort words by stats, type, group and filter
 - Save favorite words and find them easily
 
+## Web version
+The `web/` folder holds a browser version of the word finder with the same search, sorting, stat filters, clever mode and favorites. Nothing needs to be installed: everything runs in the browser, and favorites are saved in the browser (they can be exported and imported as `user_data.json` from the ⚙ menu).
+
+**Hosting it on GitHub Pages:** in the repository settings go to *Pages* → *Build and deployment* → *Source* and choose **GitHub Actions**. The workflow in `.github/workflows/pages.yml` then publishes the site on every push to `main`, at `https://<user>.github.io/TowersOfBabbleWordFinder/`.
+
+**Running it locally:** browsers block loading the data file from `file://`, so serve the folder:
+```
+cd web
+py -m http.server 8000
+```
+then open http://localhost:8000.
+
+**Updating the word data:** after replacing `units.json` or `cursed_words.json`, run `py web/tools/build_data.py` to regenerate `web/data/words.json` (the Pages workflow also does this automatically). It's the same data, packed so the browser only downloads about 2 MB.
+
 ## Compiling
 In releases you will find a zip file containing an exe, but if you would like to compile it yourself you are welcome to do so. I compiled it using PyInstaller with the following command:
 ```
