@@ -3430,7 +3430,7 @@ def build_nicegui_app():
                                 "text-xl font-bold tracking-tight"
                             ).style("color: #595959;")
                         ui.label(
-                            "Enter available letters, then click FIND WORDS! Made by Levi."
+                            "Enter available letters, then click FIND WORDS! Made by Levi. Version 2."
                         ).classes("text-xs").style("color: #595959;")
 
                     with ui.column().classes("items-end gap-1"):
@@ -3744,7 +3744,7 @@ def _apply_windows_titlebar_color(
     text_hex: str = "#111111",
     timeout: float = 15.0,
 ) -> None:
-    """Recolor the native Windows 11 title bar to match the app background."""
+    """Recolor the native Windows 11 title bar and re-apply it across focus changes."""
     if sys.platform != "win32":
         return
 
@@ -3763,11 +3763,30 @@ def _apply_windows_titlebar_color(
     SWP_NOACTIVATE = 0x0010
     SWP_FRAMECHANGED = 0x0020
 
-    user32 = ctypes.windll.user32
-    dwmapi = ctypes.windll.dwmapi
+    EVENT_SYSTEM_FOREGROUND = 0x0003
+    EVENT_SYSTEM_SWITCHEND = 0x0015
+    EVENT_SYSTEM_MINIMIZEEND = 0x0017
+    WINEVENT_OUTOFCONTEXT = 0x0000
+
+    # Use isolated WinDLL instances so argtypes don't interfere with pywebview
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
+
+    WINEVENTPROC = ctypes.WINFUNCTYPE(
+        None,
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.HWND,
+        wintypes.LONG,
+        wintypes.LONG,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    )
 
     user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
     user32.FindWindowW.restype = wintypes.HWND
+    user32.IsWindow.argtypes = [wintypes.HWND]
+    user32.IsWindow.restype = wintypes.BOOL
     user32.IsWindowVisible.argtypes = [wintypes.HWND]
     user32.IsWindowVisible.restype = wintypes.BOOL
     user32.SetWindowPos.argtypes = [
@@ -3780,6 +3799,31 @@ def _apply_windows_titlebar_color(
         wintypes.UINT,
     ]
     user32.SetWindowPos.restype = wintypes.BOOL
+    user32.SetWinEventHook.argtypes = [
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HMODULE,
+        WINEVENTPROC,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    ]
+    user32.SetWinEventHook.restype = wintypes.HANDLE
+    user32.UnhookWinEvent.argtypes = [wintypes.HANDLE]
+    user32.UnhookWinEvent.restype = wintypes.BOOL
+    user32.GetMessageW.argtypes = [
+        ctypes.POINTER(wintypes.MSG),
+        wintypes.HWND,
+        wintypes.UINT,
+        wintypes.UINT,
+    ]
+    user32.GetMessageW.restype = wintypes.BOOL
+    user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
+    user32.TranslateMessage.restype = wintypes.BOOL
+    user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
+    user32.DispatchMessageW.restype = ctypes.c_ssize_t
+    user32.PostQuitMessage.argtypes = [ctypes.c_int]
+    user32.PostQuitMessage.restype = None
 
     dwmapi.DwmSetWindowAttribute.argtypes = [
         wintypes.HWND,
@@ -3789,20 +3833,13 @@ def _apply_windows_titlebar_color(
     ]
     dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
 
-    def worker() -> None:
-        deadline = time.monotonic() + timeout
-        hwnd = None
-        while time.monotonic() < deadline:
-            found = user32.FindWindowW(None, window_title)
-            if found and user32.IsWindowVisible(found):
-                hwnd = found
-                break
-            time.sleep(0.05)
+    bg_colorref = _hex_to_colorref(bg_hex)
+    text_colorref = _hex_to_colorref(text_hex)
 
-        if not hwnd:
+    def apply_colors(hwnd: int) -> None:
+        if not hwnd or not user32.IsWindow(hwnd):
             return
 
-        # Keep dark minimize/maximize/close icons against the light #DDDDDD bar
         use_dark = ctypes.c_int(0)
         dwmapi.DwmSetWindowAttribute(
             hwnd,
@@ -3811,7 +3848,7 @@ def _apply_windows_titlebar_color(
             ctypes.sizeof(use_dark),
         )
 
-        caption_color = wintypes.DWORD(_hex_to_colorref(bg_hex))
+        caption_color = wintypes.DWORD(bg_colorref)
         dwmapi.DwmSetWindowAttribute(
             hwnd,
             DWMWA_CAPTION_COLOR,
@@ -3819,7 +3856,7 @@ def _apply_windows_titlebar_color(
             ctypes.sizeof(caption_color),
         )
 
-        text_color = wintypes.DWORD(_hex_to_colorref(text_hex))
+        text_color = wintypes.DWORD(text_colorref)
         dwmapi.DwmSetWindowAttribute(
             hwnd,
             DWMWA_TEXT_COLOR,
@@ -3827,7 +3864,6 @@ def _apply_windows_titlebar_color(
             ctypes.sizeof(text_color),
         )
 
-        # Force an immediate repaint of the title bar
         user32.SetWindowPos(
             hwnd,
             None,
@@ -3838,8 +3874,95 @@ def _apply_windows_titlebar_color(
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         )
 
-    threading.Thread(target=worker, daemon=True).start()
+    def worker() -> None:
+        deadline = time.monotonic() + timeout
+        target_hwnd = None
+        while time.monotonic() < deadline:
+            found = user32.FindWindowW(None, window_title)
+            if found and user32.IsWindowVisible(found):
+                target_hwnd = found
+                break
+            time.sleep(0.05)
 
+        if not target_hwnd:
+            return
+
+        apply_colors(target_hwnd)
+
+        startup_timer = threading.Timer(0.25, lambda: apply_colors(target_hwnd))
+        startup_timer.daemon = True
+        startup_timer.start()
+
+        pending: Dict[str, Optional[threading.Timer]] = {"timer": None}
+
+        def schedule_reapply() -> None:
+            nonlocal target_hwnd
+            if not user32.IsWindow(target_hwnd):
+                refound = user32.FindWindowW(None, window_title)
+                if not refound:
+                    user32.PostQuitMessage(0)
+                    return
+                target_hwnd = refound
+
+            apply_colors(target_hwnd)
+
+            # Re-apply shortly after WinForms finishes its WM_NCACTIVATE repaint
+            prev = pending["timer"]
+            if prev is not None:
+                prev.cancel()
+            t = threading.Timer(0.06, lambda h=target_hwnd: apply_colors(h))
+            t.daemon = True
+            pending["timer"] = t
+            t.start()
+
+        @WINEVENTPROC
+        def on_win_event(_hook, _event, _hwnd, _id_obj, _id_child, _thread, _time):
+            schedule_reapply()
+
+        hooks = [
+            user32.SetWinEventHook(
+                EVENT_SYSTEM_FOREGROUND,
+                EVENT_SYSTEM_FOREGROUND,
+                None,
+                on_win_event,
+                0,
+                0,
+                WINEVENT_OUTOFCONTEXT,
+            ),
+            user32.SetWinEventHook(
+                EVENT_SYSTEM_SWITCHEND,
+                EVENT_SYSTEM_SWITCHEND,
+                None,
+                on_win_event,
+                0,
+                0,
+                WINEVENT_OUTOFCONTEXT,
+            ),
+            user32.SetWinEventHook(
+                EVENT_SYSTEM_MINIMIZEEND,
+                EVENT_SYSTEM_MINIMIZEEND,
+                None,
+                on_win_event,
+                0,
+                0,
+                WINEVENT_OUTOFCONTEXT,
+            ),
+        ]
+
+        try:
+            msg = wintypes.MSG()
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                user32.TranslateMessage(ctypes.byref(msg))
+                user32.DispatchMessageW(ctypes.byref(msg))
+        finally:
+            prev = pending["timer"]
+            if prev is not None:
+                prev.cancel()
+            for hook in hooks:
+                if hook:
+                    user32.UnhookWinEvent(hook)
+
+    threading.Thread(target=worker, daemon=True).start()
 
 def main():
     from nicegui import app
