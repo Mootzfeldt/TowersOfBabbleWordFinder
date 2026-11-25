@@ -3266,7 +3266,7 @@ def build_nicegui_app():
                 add_file_loader(
                     "user_data",
                     "USER DATA JSON",
-                    "A file storing your favorites.",
+                    "A file for storing your favorite words. Should be missing if this is the first time you have opened the program, will be made when you favorite a word.",
                     ".json",
                     self._handle_user_data_upload,
                 )
