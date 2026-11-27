@@ -4773,7 +4773,7 @@ def build_nicegui_app():
                                 "text-xl font-bold tracking-tight"
                             ).style("color: #595959;")
                         ui.label(
-                            "Enter available letters, then click FIND WORDS! Made by Levi. Version 2."
+                            "Enter available letters, then click FIND WORDS! Made by Levi. Version 3."
                         ).classes("text-xs").style("color: #595959;")
 
                     with ui.column().classes("items-end gap-1"):
