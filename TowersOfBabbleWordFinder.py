@@ -168,7 +168,7 @@ STAT_FILTERS: List[Tuple[str, str, str, str]] = [
     ("slow", "SLOW", "#1564BE", "#FFFFFF"),
     ("stun", "STUN", "#676900", "#FFFFFF"),
     ("knockback", "KNOCKBACK", "#BF1871", "#FFFFFF"),
-    ("armor_shred", "ARMOR SHRED", "#A84800", "#FFFFFF"),
+    ("armor_shred", "SHRED", "#A84800", "#FFFFFF"),
     ("dmg_buff_aura", "DAMAGE AURA", "#C51F1F", "#FFFFFF"),
     ("firerate_buff_aura", "ATTACK SPEED AURA", "#962AD7", "#FFFFFF"),
     ("armor_buff_aura", "ARMOR AURA", "#835C50", "#FFFFFF"),
@@ -1575,6 +1575,7 @@ class UnitDatabase:
         descending: bool = True,
         group_by_length: bool = False,
         include_two_letter_words: bool = False,
+        sort_results: bool = True,
     ) -> List[UnitRecord]:
         avail_clean = "".join(
             ch for ch in available_letters.lower() if ("a" <= ch <= "z") or ch in ("?", "*")
@@ -1678,12 +1679,13 @@ class UnitDatabase:
 
             results.append(rec)
 
-        self._sort_results(
-            results,
-            sort_by=sort_by,
-            descending=descending,
-            group_by_length=group_by_length,
-        )
+        if sort_results:
+            self._sort_results(
+                results,
+                sort_by=sort_by,
+                descending=descending,
+                group_by_length=group_by_length,
+            )
         return results
 
     def _sort_results(
@@ -1722,13 +1724,43 @@ class UnitDatabase:
         val_sign = -1 if descending else 1
         len_sign = -1 if descending else 1
 
-        def stat_sort_key(r: UnitRecord):
-            v = r.get_stat_value(sort_by)
-            missing = 1 if v is None else 0
-            num = 0.0 if v is None else (val_sign * v)
-            if group_by_length:
-                return (len_sign * r.length, missing, num, -r.scrabble, r.word)
-            return (missing, num, -r.scrabble, r.word)
+        if sort_by == "damage":
+            get_val = lambda r: r.damage if r.damage is not None else r._delta_val("damage")
+        elif sort_by == "dps":
+            get_val = lambda r: r.dps
+        elif sort_by == "attack_speed":
+            get_val = lambda r: r.attack_speed if r.attack_speed is not None else r._delta_val("attack_speed")
+        elif sort_by in ("toughness", "health"):
+            get_val = lambda r: r.health if r.health is not None else r._delta_val("toughness")
+        elif sort_by == "armor":
+            get_val = lambda r: r.armor if (r.armor is not None and (r.armor > 0 or r.kind == "TOWER")) else r._delta_val("armor")
+        elif sort_by == "range":
+            get_val = lambda r: r.range if r.range is not None else (r.harvest_range if r.harvest_range is not None else r._delta_val("range"))
+        elif sort_by == "harvest_amount":
+            get_val = lambda r: r.harvest_amount if r.harvest_amount is not None else r._delta_val("harvest_amount")
+        elif sort_by == "harvest_speed":
+            get_val = lambda r: r.harvest_speed if r.harvest_speed is not None else r._delta_val("harvest_speed")
+        elif sort_by == "harvest_rate":
+            get_val = lambda r: r.harvest_rate
+        elif sort_by == "harvest_types":
+            get_val = lambda r: float(r.harvest_types) if r.harvest_types is not None else None
+        else:
+            def get_val(r: UnitRecord):
+                sp = r._special_val(sort_by)
+                return sp if sp is not None else r._delta_val(sort_by)
+
+        if group_by_length:
+            def stat_sort_key(r: UnitRecord):
+                v = get_val(r)
+                if v is None:
+                    return (len_sign * r.length, 1, 0.0, -r.scrabble, r.word)
+                return (len_sign * r.length, 0, val_sign * v, -r.scrabble, r.word)
+        else:
+            def stat_sort_key(r: UnitRecord):
+                v = get_val(r)
+                if v is None:
+                    return (1, 0.0, -r.scrabble, r.word)
+                return (0, val_sign * v, -r.scrabble, r.word)
 
         results.sort(key=stat_sort_key)
 
@@ -2259,9 +2291,14 @@ def build_nicegui_app():
             self._clever_search_generation: int = 0
             self._clever_cancel_event: Optional[threading.Event] = None
             self._clever_task: Optional[asyncio.Task] = None
+            self._stat_filter_generation: int = 0
+            self._stat_filter_task: Optional[asyncio.Task] = None
             self._cached_base_key: Optional[Tuple[Any, ...]] = None
             self._cached_base_matches: List[UnitRecord] = []
             self._cached_stat_counts: Dict[str, int] = {}
+            self._cached_max_changes: Dict[str, float] = {}
+            self._cached_sorted_key: Optional[Tuple[Any, ...]] = None
+            self._cached_sorted_matches: List[UnitRecord] = []
             self._cached_clever_key: Optional[Tuple[Any, ...]] = None
             self._cached_clever_result: Optional[
                 Tuple[
@@ -2544,49 +2581,65 @@ def build_nicegui_app():
                 f"color: {foreground} !important;"
             )
 
+        def _get_max_positive_stat_change(
+            self, base_results: List[UnitRecord], stat_key: str
+        ) -> float:
+            cached = self._cached_max_changes.get(stat_key)
+            if cached is not None:
+                return cached
+            if stat_key == "curse":
+                max_val = (
+                    1.0 if self.stat_filter_counts.get("curse", 0) > 0 else 0.0
+                )
+                self._cached_max_changes[stat_key] = max_val
+                return max_val
+            bit = STAT_FILTER_BITS.get(stat_key, 0)
+            max_val = 0.0
+            for rec in base_results:
+                if rec._positive_stat_mask & bit:
+                    val = rec.get_positive_stat_change(stat_key)
+                    if val is not None and val > max_val:
+                        max_val = val
+            self._cached_max_changes[stat_key] = max_val
+            return max_val
+
         def _sort_combined_results(
             self,
             results: List[UnitRecord],
             base_results: List[UnitRecord],
             stat_keys: List[str],
         ) -> None:
-            max_changes = {
-                key: max(
-                    (
-                        rec.get_positive_stat_change(key) or 0.0
-                        for rec in base_results
-                    ),
-                    default=0.0,
-                )
-                for key in stat_keys
-            }
-
-            def combined_score(rec: UnitRecord) -> float:
-                return sum(
-                    (rec.get_positive_stat_change(key) or 0.0) / max_changes[key]
-                    for key in stat_keys
-                    if max_changes[key] > 0.0
-                )
+            inv_scales: List[Tuple[str, float]] = []
+            for key in stat_keys:
+                max_val = self._get_max_positive_stat_change(base_results, key)
+                if max_val > 0.0:
+                    inv_scales.append((key, 1.0 / max_val))
 
             order_sign = -1 if self.descending else 1
             length_sign = -1 if self.descending else 1
             if self.group_by_length:
-                results.sort(
-                    key=lambda rec: (
+                def sort_key(rec: UnitRecord):
+                    score = 0.0
+                    for key, inv_max in inv_scales:
+                        val = rec.get_positive_stat_change(key)
+                        if val is not None:
+                            score += val * inv_max
+                    return (
                         length_sign * rec.length,
-                        order_sign * combined_score(rec),
+                        order_sign * score,
                         -rec.scrabble,
                         rec.word,
                     )
-                )
             else:
-                results.sort(
-                    key=lambda rec: (
-                        order_sign * combined_score(rec),
-                        -rec.scrabble,
-                        rec.word,
-                    )
-                )
+                def sort_key(rec: UnitRecord):
+                    score = 0.0
+                    for key, inv_max in inv_scales:
+                        val = rec.get_positive_stat_change(key)
+                        if val is not None:
+                            score += val * inv_max
+                    return (order_sign * score, -rec.scrabble, rec.word)
+
+            results.sort(key=sort_key)
 
         def _get_active_group_totals(self) -> Dict[Tuple[str, int], int]:
             totals: Dict[Tuple[str, int], int] = {}
@@ -2871,6 +2924,15 @@ def build_nicegui_app():
             self._sync_favorite_style(self.favorites_only)
             self.run_applied_search(reset_pagination=True)
 
+        def _cancel_pending_stat_filter_search(self) -> None:
+            self._stat_filter_generation += 1
+            if (
+                self._stat_filter_task is not None
+                and not self._stat_filter_task.done()
+            ):
+                self._stat_filter_task.cancel()
+            self._stat_filter_task = None
+
         def on_toggle_stat_filter(self, stat_key: str) -> None:
             if stat_key in self.selected_stat_filters:
                 self.selected_stat_filters.remove(stat_key)
@@ -2890,7 +2952,35 @@ def build_nicegui_app():
                 self.sort_by = "points"
 
             self._sync_sort_mode_button()
-            self.run_applied_search(reset_pagination=True)
+            self._update_stat_filter_controls()
+            self._cancel_pending_stat_filter_search()
+
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                self.run_applied_search(reset_pagination=True)
+                return
+
+            generation = self._stat_filter_generation
+
+            async def _debounced_search() -> None:
+                try:
+                    await asyncio.sleep(0.08)
+                except asyncio.CancelledError:
+                    return
+                if (
+                    generation != self._stat_filter_generation
+                    or self.results_container is None
+                    or self.results_container.is_deleted
+                    or self.results_container.client.is_deleted
+                ):
+                    return
+                self._stat_filter_task = None
+                self.run_applied_search(reset_pagination=True)
+
+            self._stat_filter_task = background_tasks.create(
+                _debounced_search(), name="stat-filter-search"
+            )
 
         def on_find_words(self) -> None:
             self.applied_query = self._snapshot_form()
@@ -3141,6 +3231,7 @@ def build_nicegui_app():
             )
 
         def run_applied_search(self, reset_pagination: bool = True) -> None:
+            self._cancel_pending_stat_filter_search()
             self._cancel_pending_clever_search()
             q = self.applied_query
             if not GLOBAL_DB.units:
@@ -3205,9 +3296,6 @@ def build_nicegui_app():
                 self.favorites_only,
                 favorites_key,
                 frozenset(self.selected_kinds),
-                base_sort_by,
-                self.descending,
-                self.group_by_length,
                 self.show_two_letter_words,
             )
             if base_key == self._cached_base_key:
@@ -3226,10 +3314,8 @@ def build_nicegui_app():
                     favorites_only=self.favorites_only,
                     favorites=self.favorites,
                     kind_filters=self.selected_kinds,
-                    sort_by=base_sort_by,
-                    descending=self.descending,
-                    group_by_length=self.group_by_length,
                     include_two_letter_words=self.show_two_letter_words,
+                    sort_results=False,
                 )
 
                 stat_counts = [0] * len(STAT_FILTERS)
@@ -3246,6 +3332,9 @@ def build_nicegui_app():
                 self._cached_base_key = base_key
                 self._cached_base_matches = base_matches
                 self._cached_stat_counts = dict(self.stat_filter_counts)
+                self._cached_max_changes.clear()
+                self._cached_sorted_key = None
+                self._cached_sorted_matches = []
             self._update_stat_filter_controls()
 
             selected_stats = [
@@ -3253,24 +3342,52 @@ def build_nicegui_app():
                 for key, _, _, _ in STAT_FILTERS
                 if key in self.selected_stat_filters
             ]
-            matches = base_matches
             if selected_stats:
+                required_mask = 0
+                for key in selected_stats:
+                    required_mask |= STAT_FILTER_BITS[key]
                 matches = [
                     rec
                     for rec in base_matches
-                    if all(
-                        rec.has_positive_stat_change(key)
-                        for key in selected_stats
-                    )
+                    if (rec._positive_stat_mask & required_mask) == required_mask
                 ]
-                if (
-                    len(selected_stats) > 1
-                    and self.sort_by == "combined_stats"
-                    and self.sort_mode == "value"
-                ):
-                    self._sort_combined_results(
-                        matches, base_matches, selected_stats
+                if not self.clever_mode:
+                    if (
+                        len(selected_stats) > 1
+                        and self.sort_by == "combined_stats"
+                        and self.sort_mode == "value"
+                    ):
+                        self._sort_combined_results(
+                            matches, base_matches, selected_stats
+                        )
+                    else:
+                        GLOBAL_DB._sort_results(
+                            matches,
+                            sort_by=base_sort_by,
+                            descending=self.descending,
+                            group_by_length=self.group_by_length,
+                        )
+            elif self.clever_mode:
+                matches = base_matches
+            else:
+                sorted_key = (
+                    base_key,
+                    base_sort_by,
+                    self.descending,
+                    self.group_by_length,
+                )
+                if sorted_key == self._cached_sorted_key:
+                    matches = self._cached_sorted_matches
+                else:
+                    matches = list(base_matches)
+                    GLOBAL_DB._sort_results(
+                        matches,
+                        sort_by=base_sort_by,
+                        descending=self.descending,
+                        group_by_length=self.group_by_length,
                     )
+                    self._cached_sorted_key = sorted_key
+                    self._cached_sorted_matches = matches
 
             self.current_matches = matches
             if reset_pagination:
@@ -4657,7 +4774,11 @@ def build_nicegui_app():
 
                     self.results_container = ui.column().classes("w-full gap-1.5")
 
-            ui.context.client.on_delete(self._cancel_pending_clever_search)
+            def _cleanup_tasks() -> None:
+                self._cancel_pending_stat_filter_search()
+                self._cancel_pending_clever_search()
+
+            ui.context.client.on_delete(_cleanup_tasks)
 
             # Perform initial render immediately if loaded, otherwise wait asynchronously.
             if not _DB_AUTOLOAD_STARTED or DB_LOAD_EVENT.is_set():
