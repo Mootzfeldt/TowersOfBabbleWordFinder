@@ -1562,6 +1562,27 @@ CUSTOM_CSS = """
   .babble-unit-box-open.babble-unit-box-harvester {
     border: 1.5px solid #1E7D32 !important;
   }
+  .babble-combo-box {
+    background: #F4F4F4;
+    border: 1px solid #BDBDBD;
+    border-radius: 8px;
+    padding: 9px 12px;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+  .babble-combo-box:hover {
+    background: #EAEAEA;
+  }
+  .babble-combo-box-open {
+    background: #F4F4F4 !important;
+    border: 1.5px solid #8A8A8A !important;
+  }
+  .babble-combo-unit {
+    background: #F4F4F4;
+    border: 1px solid #BDBDBD;
+    border-radius: 8px;
+    padding: 9px 12px;
+  }
   .babble-pts-tile {
     background: #F4F4F4;
     border: 1px solid #B8AD7E;
@@ -2742,29 +2763,7 @@ def build_nicegui_app():
                 body.set_visibility(not is_collapsed)
                 with body:
                     for combination in combinations:
-                        with ui.row().classes(
-                            "w-full items-center gap-2 flex-wrap px-3 py-2 "
-                            "rounded border bg-white"
-                        ):
-                            for index, rec in enumerate(combination):
-                                if index:
-                                    ui.label("+").classes(
-                                        "text-sm font-bold"
-                                    ).style("color: #777777;")
-                                meta = (
-                                    KIND_META["CURSED"]
-                                    if rec.is_cursed
-                                    else KIND_META.get(
-                                        rec.kind, KIND_META["TOWER"]
-                                    )
-                                )
-                                with ui.row().classes("items-baseline gap-1"):
-                                    ui.label(rec.word_upper).classes(
-                                        "text-sm font-bold"
-                                    ).style(f"color: {meta['color']};")
-                                    ui.label(f"({meta['display']})").classes(
-                                        "text-xs font-bold"
-                                    ).style(f"color: {meta['color']};")
+                        self._render_combination_box(combination)
 
                     if len(combinations) < total_count:
                         remaining = total_count - len(combinations)
@@ -2794,6 +2793,160 @@ def build_nicegui_app():
                     self._sync_group_collapse_button()
 
                 header.on("click", toggle_group)
+
+        def _render_combination_box(
+            self, combination: Tuple[UnitRecord, ...]
+        ) -> None:
+            state = {"open": False, "built": False}
+            box = ui.column().classes("w-full babble-combo-box gap-0")
+
+            with box:
+                with ui.row().classes(
+                    "w-full items-center justify-between no-wrap gap-2"
+                ):
+                    with ui.row().classes(
+                        "items-center gap-2 flex-wrap min-w-0"
+                    ):
+                        for index, rec in enumerate(combination):
+                            if index:
+                                ui.label("+").classes(
+                                    "text-sm font-bold"
+                                ).style("color: #777777;")
+                            meta = (
+                                KIND_META["CURSED"]
+                                if rec.is_cursed
+                                else KIND_META.get(
+                                    rec.kind, KIND_META["TOWER"]
+                                )
+                            )
+                            with ui.row().classes("items-baseline gap-1"):
+                                ui.label(rec.word_upper).classes(
+                                    "text-sm font-bold"
+                                ).style(f"color: {meta['color']};")
+                                ui.label(f"({meta['display']})").classes(
+                                    "text-xs font-bold"
+                                ).style(f"color: {meta['color']};")
+
+                    with ui.row().classes(
+                        "items-center gap-1.5 no-wrap shrink-0"
+                    ):
+                        total_pts = sum(rec.scrabble for rec in combination)
+                        ui.label(f"{total_pts} PTS").classes("babble-pts-tile")
+                        chevron_lbl = ui.label("▸").classes(
+                            "text-xs font-bold"
+                        ).style(
+                            "color: #595959; width: 10px; text-align: right;"
+                        )
+
+                details_col = ui.column().classes("w-full gap-2 pt-2.5")
+                details_col.set_visibility(False)
+
+            def toggle_open(_e=None):
+                state["open"] = not state["open"]
+                is_open = state["open"]
+                if is_open and not state["built"]:
+                    state["built"] = True
+                    self._populate_combination_details(details_col, combination)
+
+                details_col.set_visibility(is_open)
+                chevron_lbl.set_text("▾" if is_open else "▸")
+                if is_open:
+                    box.classes(add="babble-combo-box-open")
+                else:
+                    box.classes(remove="babble-combo-box-open")
+
+            box.on("click", toggle_open)
+
+        def _populate_combination_details(
+            self, container, combination: Tuple[UnitRecord, ...]
+        ) -> None:
+            with container:
+                for rec in combination:
+                    meta = (
+                        KIND_META["CURSED"]
+                        if rec.is_cursed
+                        else KIND_META.get(rec.kind, KIND_META["TOWER"])
+                    )
+                    is_fav = rec.word in self.favorites
+                    kind_class = (
+                        "babble-unit-box-cursed"
+                        if rec.is_cursed
+                        else f"babble-unit-box-{rec.kind.lower()}"
+                    )
+                    with ui.column().classes(
+                        f"w-full babble-combo-unit {kind_class} gap-1.5"
+                    ):
+                        with ui.row().classes(
+                            "w-full items-start justify-between no-wrap gap-2"
+                        ):
+                            with ui.row().classes(
+                                "items-center gap-1.5 flex-wrap min-w-0"
+                            ):
+                                heart_btn = (
+                                    ui.button("♥" if is_fav else "♡")
+                                    .props("flat dense round size=sm")
+                                    .style(
+                                        f"color: {'#FF5604' if is_fav else '#666666'}; "
+                                        "min-width: 24px; min-height: 24px; font-size: 15px; padding: 0;"
+                                    )
+                                )
+                                heart_btn.on(
+                                    "click.stop",
+                                    lambda _e, w=rec.word, hb=heart_btn: self.on_toggle_word_favorite(
+                                        w, hb
+                                    ),
+                                )
+                                ui.label(rec.word_upper).classes(
+                                    "text-base font-bold leading-tight"
+                                ).style(f"color: {meta['color']};")
+                                ui.label(f"({meta['display']})").classes(
+                                    "text-sm font-bold leading-tight"
+                                ).style(f"color: {meta['color']};")
+
+                            with ui.row().classes("items-start gap-2 shrink-0"):
+                                with ui.row().classes(
+                                    "items-center gap-1.5 pt-0.5"
+                                ):
+                                    use_btn = (
+                                        ui.button("USE")
+                                        .props("unelevated dense")
+                                        .classes("babble-mini-use")
+                                    )
+                                    use_btn.tooltip(
+                                        "Copy word, remove its letters from Available Letters, and refresh"
+                                    )
+                                    use_btn.on(
+                                        "click.stop",
+                                        lambda _e, w=rec.word: self.on_use_word(
+                                            w
+                                        ),
+                                    )
+
+                                    def_url = f"https://onelook.com/?w={quote_plus(rec.word)}"
+                                    def_btn = (
+                                        ui.button("DEF")
+                                        .props(
+                                            f'unelevated dense href="{def_url}" target="_blank"'
+                                        )
+                                        .classes("babble-mini-use")
+                                    )
+                                    def_btn.tooltip(
+                                        f"Open OneLook definition for '{rec.word}'"
+                                    )
+                                    def_btn.on("click.stop", lambda _e: None)
+
+                                with ui.column().classes("items-end gap-1"):
+                                    ui.label(f"{rec.scrabble} PTS").classes(
+                                        "babble-pts-tile"
+                                    )
+                                    ui.label(f"{rec.length} letters").classes(
+                                        "text-xs font-medium"
+                                    ).style("color: #666666; line-height: 1;")
+
+                        unit_details = ui.column().classes(
+                            "w-full gap-1.5 pl-7 pr-2"
+                        )
+                        self._populate_expanded_details(unit_details, rec)
 
         def _render_length_group(
             self,
