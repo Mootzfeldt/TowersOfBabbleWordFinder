@@ -375,10 +375,19 @@ def normalize_user_data(data: Any) -> Dict[str, Any]:
     ):
         raise ValueError("'favorites' must be a list of words.")
 
+    used_words = data.get("used_words", [])
+    if not isinstance(used_words, list) or any(
+        not isinstance(word, str) for word in used_words
+    ):
+        raise ValueError("'used_words' must be a list of words.")
+
     normalized = dict(data)
     normalized.setdefault("version", 1)
     normalized["favorites"] = sorted(
         {word.strip().lower() for word in favorites if word.strip()}
+    )
+    normalized["used_words"] = sorted(
+        {word.strip().lower() for word in used_words if word.strip()}
     )
     normalized["dictionary_url"] = normalize_dictionary_url(
         data.get("dictionary_url", DEFAULT_DICTIONARY_URL)
@@ -1614,6 +1623,9 @@ class UnitDatabase:
         effect_filter: str = "",
         favorites_only: bool = False,
         favorites: Optional[Set[str]] = None,
+        used_only: bool = False,
+        hide_used: bool = False,
+        used_words: Optional[Set[str]] = None,
         sort_by: str = "points",
         descending: bool = True,
         group_by_length: bool = False,
@@ -1643,6 +1655,7 @@ class UnitDatabase:
             cont_counts[ch] = cont_counts.get(ch, 0) + 1
 
         fav_set = favorites or set()
+        used_set = used_words or set()
 
         results: List[UnitRecord] = []
         for rec in self.units:
@@ -1650,6 +1663,12 @@ class UnitDatabase:
                 continue
 
             if favorites_only and rec.word not in fav_set:
+                continue
+
+            if used_only and rec.word not in used_set:
+                continue
+
+            if hide_used and rec.word in used_set:
                 continue
 
             if kind_filters is not None:
@@ -2266,6 +2285,7 @@ def build_nicegui_app():
             self.user_data: Dict[str, Any] = {
                 "version": 1,
                 "favorites": [],
+                "used_words": [],
                 "dictionary_url": DEFAULT_DICTIONARY_URL,
             }
             self.user_data_source = ""
@@ -2301,6 +2321,9 @@ def build_nicegui_app():
                         print(f"Could not migrate {legacy_path.name}: {exc}")
 
             self.favorites: Set[str] = set(self.user_data["favorites"])
+            self.used_words: Set[str] = set(
+                self.user_data.get("used_words", [])
+            )
             self.dictionary_url: str = normalize_dictionary_url(
                 self.user_data.get("dictionary_url", DEFAULT_DICTIONARY_URL)
             )
@@ -2327,6 +2350,8 @@ def build_nicegui_app():
             self.show_two_letter_words: bool = False
             self.clever_mode: bool = False
             self.favorites_only: bool = False
+            self.used_only: bool = False
+            self.hide_used: bool = False
             self.selected_stat_filters: Set[str] = set()
             self.stat_filter_counts: Dict[str, int] = {}
 
@@ -2379,6 +2404,8 @@ def build_nicegui_app():
             self.btn_two_letter_words = None
             self.btn_clever_mode = None
             self.btn_collapse_groups = None
+            self.btn_used_only = None
+            self.btn_hide_used = None
             self.btn_favorites = None
             self.btn_in_order = None
             self.btn_exact = None
@@ -2456,6 +2483,34 @@ def build_nicegui_app():
                     "border: 2px solid #939393 !important; "
                     "color: #111111 !important;"
                 )
+
+        def _has_used_words_data(self) -> bool:
+            return bool(self.user_data_loaded and self.used_words)
+
+        def _sync_used_filter_controls(self) -> None:
+            has_used = self._has_used_words_data()
+            if not has_used:
+                self.used_only = False
+                self.hide_used = False
+
+            if self.btn_used_only is not None:
+                self.btn_used_only.set_visibility(has_used)
+                if self.used_only:
+                    self.btn_used_only.style(
+                        "background: #2E7D32 !important; "
+                        "border: 2px solid #2E7D32 !important; "
+                        "color: #FFFFFF !important;"
+                    )
+                else:
+                    self.btn_used_only.style(
+                        "background: #DCDCDC !important; "
+                        "border: 2px solid #939393 !important; "
+                        "color: #111111 !important;"
+                    )
+
+            if self.btn_hide_used is not None:
+                self.btn_hide_used.set_visibility(has_used)
+                self._sync_pill_style(self.btn_hide_used, self.hide_used)
 
         def _sync_favorite_style(self, active: bool) -> None:
             if active:
@@ -2986,6 +3041,24 @@ def build_nicegui_app():
             self._sync_pill_style(self.btn_group, self.group_by_length)
             self.run_applied_search(reset_pagination=True)
 
+        def on_toggle_used_only(self) -> None:
+            if not self._has_used_words_data():
+                return
+            self.used_only = not self.used_only
+            if self.used_only:
+                self.hide_used = False
+            self._sync_used_filter_controls()
+            self.run_applied_search(reset_pagination=True)
+
+        def on_toggle_hide_used(self) -> None:
+            if not self._has_used_words_data():
+                return
+            self.hide_used = not self.hide_used
+            if self.hide_used:
+                self.used_only = False
+            self._sync_used_filter_controls()
+            self.run_applied_search(reset_pagination=True)
+
         def on_toggle_favorites_only(self) -> None:
             self.favorites_only = not self.favorites_only
             self._sync_favorite_style(self.favorites_only)
@@ -3074,6 +3147,8 @@ def build_nicegui_app():
                 self.show_two_letter_words = False
                 self.clever_mode = False
                 self.favorites_only = False
+                self.used_only = False
+                self.hide_used = False
                 self.selected_stat_filters.clear()
 
                 self.inp_letters.value = ""
@@ -3091,6 +3166,7 @@ def build_nicegui_app():
                 self._sync_clever_mode_button()
                 self._sync_pill_style(self.btn_in_order, False)
                 self._sync_pill_style(self.btn_exact, False)
+                self._sync_used_filter_controls()
                 self._sync_favorite_style(False)
                 self._update_letter_count_label()
             finally:
@@ -3120,6 +3196,27 @@ def build_nicegui_app():
                 }})();
                 """
             )
+
+            used_word = word.strip().lower()
+            if used_word:
+                self.used_words.add(used_word)
+                self.user_data["used_words"] = sorted(self.used_words)
+                try:
+                    save_user_data_json(self.user_data_path, self.user_data)
+                    self.user_data_source = self.user_data_path.name
+                    self.user_data_size_bytes = self.user_data_path.stat().st_size
+                    self.user_data_loaded = True
+                    self._set_settings_file_status(
+                        "user_data",
+                        self.user_data_size_bytes,
+                        self.user_data_loaded,
+                    )
+                except (OSError, TypeError, ValueError) as exc:
+                    ui.notify(
+                        f"Could not save used word to user data: {exc}",
+                        type="negative",
+                    )
+                self._sync_used_filter_controls()
 
             source_rack = self.form_letters or self.applied_query["available_letters"]
             remaining, removed = consume_word_letters(source_rack, word)
@@ -3351,6 +3448,11 @@ def build_nicegui_app():
             favorites_key = (
                 frozenset(self.favorites) if self.favorites_only else None
             )
+            used_key = (
+                frozenset(self.used_words)
+                if (self.used_only or self.hide_used)
+                else None
+            )
             base_key = (
                 GLOBAL_DB.revision,
                 q["available_letters"],
@@ -3363,6 +3465,9 @@ def build_nicegui_app():
                 q["effect_filter"],
                 self.favorites_only,
                 favorites_key,
+                self.used_only,
+                self.hide_used,
+                used_key,
                 frozenset(self.selected_kinds),
                 self.show_two_letter_words,
             )
@@ -3381,6 +3486,9 @@ def build_nicegui_app():
                     effect_filter=q["effect_filter"],
                     favorites_only=self.favorites_only,
                     favorites=self.favorites,
+                    used_only=self.used_only,
+                    hide_used=self.hide_used,
+                    used_words=self.used_words,
                     kind_filters=self.selected_kinds,
                     include_two_letter_words=self.show_two_letter_words,
                     sort_results=False,
@@ -3477,6 +3585,9 @@ def build_nicegui_app():
                     q["effect_filter"],
                     self.favorites_only,
                     favorites_key,
+                    self.used_only,
+                    self.hide_used,
+                    used_key,
                     frozenset(self.selected_kinds),
                     frozenset(self.selected_stat_filters),
                     self.show_two_letter_words,
@@ -3765,13 +3876,22 @@ def build_nicegui_app():
                                     rec.kind, KIND_META["TOWER"]
                                 )
                             )
-                            with ui.row().classes("items-baseline gap-1"):
+                            with ui.row().classes("items-center gap-1"):
                                 ui.label(rec.word_upper).classes(
                                     "text-sm font-bold"
                                 ).style(f"color: {meta['color']};")
                                 ui.label(f"({meta['display']})").classes(
                                     "text-xs font-bold"
                                 ).style(f"color: {meta['color']};")
+                                if (
+                                    self._has_used_words_data()
+                                    and rec.word in self.used_words
+                                ):
+                                    ui.icon(
+                                        "check_circle", size="14px"
+                                    ).style("color: #2E7D32;").tooltip(
+                                        "Used before"
+                                    )
 
                     with ui.row().classes(
                         "items-center gap-1.5 no-wrap shrink-0"
@@ -3848,6 +3968,15 @@ def build_nicegui_app():
                                 ui.label(f"({meta['display']})").classes(
                                     "text-sm font-bold leading-tight"
                                 ).style(f"color: {meta['color']};")
+                                if (
+                                    self._has_used_words_data()
+                                    and rec.word in self.used_words
+                                ):
+                                    ui.icon(
+                                        "check_circle", size="16px"
+                                    ).style("color: #2E7D32;").tooltip(
+                                        "Used before"
+                                    )
 
                             with ui.row().classes("items-start gap-2 shrink-0"):
                                 with ui.row().classes(
@@ -4002,6 +4131,13 @@ def build_nicegui_app():
                             ui.label(f"({meta['display']})").classes(
                                 "text-sm font-bold leading-tight"
                             ).style(f"color: {meta['color']};")
+                            if (
+                                self._has_used_words_data()
+                                and rec.word in self.used_words
+                            ):
+                                ui.icon("check_circle", size="16px").style(
+                                    "color: #2E7D32;"
+                                ).tooltip("Used before")
 
                         # Unopened 3-stat preview row (hidden when unfolded)
                         preview_row = ui.row().classes(
@@ -4369,7 +4505,7 @@ def build_nicegui_app():
                 add_file_loader(
                     "user_data",
                     "USER DATA JSON",
-                    "A file for storing your favorite words and custom settings (such as your dictionary link). Should be missing if this is the first time you have opened the program, will be made when you favorite a word or save settings.",
+                    "A file for storing your data. Currently stores favorite words, used words and custom settings (such as your dictionary link). Should be missing if this is the first time you have opened the program, will be made when you favorite/use a word or save settings.",
                     ".json",
                     self._handle_user_data_upload,
                 )
@@ -4579,6 +4715,7 @@ def build_nicegui_app():
 
             self.user_data = data
             self.favorites = set(data["favorites"])
+            self.used_words = set(data.get("used_words", []))
             self.dictionary_url = data["dictionary_url"]
             if self.inp_dictionary_url is not None:
                 self.inp_dictionary_url.value = self.dictionary_url
@@ -4588,10 +4725,11 @@ def build_nicegui_app():
             self._set_settings_file_status(
                 "user_data", len(raw_bytes), self.user_data_loaded
             )
+            self._sync_used_filter_controls()
             e.sender.reset()
             self._refresh_after_file_change()
             ui.notify(
-                f"Loaded user data with {len(self.favorites):,} favorites from {e.name}",
+                f"Loaded user data with {len(self.favorites):,} favorites and {len(self.used_words):,} used words from {e.name}",
                 type="positive",
             )
 
@@ -4798,14 +4936,40 @@ def build_nicegui_app():
                             )
                             self._sync_clever_mode_button()
 
-                        self.btn_favorites = (
-                            ui.button(
-                                "♥ FAVORITES", on_click=self.on_toggle_favorites_only
+                        with ui.row().classes("items-center gap-2 flex-wrap"):
+                            self.btn_hide_used = (
+                                ui.button(
+                                    "HIDE USED",
+                                    on_click=self.on_toggle_hide_used,
+                                )
+                                .props("unelevated dense")
+                                .classes("babble-pill px-3 h-9 text-xs")
                             )
-                            .props("unelevated dense")
-                            .classes("babble-pill px-4 h-9 text-xs")
-                        )
-                        self._sync_favorite_style(False)
+                            self.btn_hide_used.tooltip(
+                                "Filter out words you have used before"
+                            )
+                            self.btn_used_only = (
+                                ui.button(
+                                    "✓ USED",
+                                    on_click=self.on_toggle_used_only,
+                                )
+                                .props("unelevated dense")
+                                .classes("babble-pill px-3 h-9 text-xs")
+                            )
+                            self.btn_used_only.tooltip(
+                                "Show only words you have used before"
+                            )
+                            self._sync_used_filter_controls()
+
+                            self.btn_favorites = (
+                                ui.button(
+                                    "♥ FAVORITES",
+                                    on_click=self.on_toggle_favorites_only,
+                                )
+                                .props("unelevated dense")
+                                .classes("babble-pill px-4 h-9 text-xs")
+                            )
+                            self._sync_favorite_style(False)
 
                     ui.separator().style("background-color: #C8C8C8;")
 
