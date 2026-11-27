@@ -2173,6 +2173,11 @@ def get_custom_css() -> str:
 
 def build_nicegui_app():
     from nicegui import background_tasks, ui
+    from nicegui.translations import translations as nicegui_translations
+
+    for entry in nicegui_translations.values():
+        entry["connection_lost"] = "Please wait."
+        entry["trying_to_reconnect"] = "The program is loading..."
 
     PAGE_SIZE = 200
 
