@@ -2,11 +2,16 @@
 # units.json was taken directly from the game files, while cursed_words.json was decompiled by AI.
 # Mostly written by AI, I (Levi) simply fixed formatting, functionality and other small things.
 
+import asyncio
 import json
+import multiprocessing
 import os
+import socket
 import sys
 import base64
-from functools import lru_cache
+import threading
+import time
+from itertools import combinations_with_replacement, product
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import quote_plus
@@ -176,6 +181,34 @@ STAT_FILTER_BITS: Dict[str, int] = {
     stat_key: 1 << index
     for index, (stat_key, _, _, _) in enumerate(STAT_FILTERS)
 }
+_CHAR_BITS: Dict[str, int] = {chr(97 + i): 1 << i for i in range(26)}
+_KIND_LOOKUP: Dict[str, str] = {
+    "TOWER": "TOWER",
+    "HARVESTER": "HARVESTER",
+    "MOD": "MOD",
+    "MODIFIER_QUALITY": "MOD",
+    "MODIFIER_ACTION": "MOD",
+}
+_BIT_DAMAGE = STAT_FILTER_BITS["damage"]
+_BIT_ATTACK_SPEED = STAT_FILTER_BITS["attack_speed"]
+_BIT_TOUGHNESS = STAT_FILTER_BITS["toughness"]
+_BIT_ARMOR = STAT_FILTER_BITS["armor"]
+_BIT_RANGE = STAT_FILTER_BITS["range"]
+_BIT_HARVEST_AMOUNT = STAT_FILTER_BITS["harvest_amount"]
+_BIT_HARVEST_SPEED = STAT_FILTER_BITS["harvest_speed"]
+_BIT_CURSE = STAT_FILTER_BITS["curse"]
+_TOWER_DMG_POS = TOWER_DEFAULTS["damage"] + 0.01
+_TOWER_SPD_POS = TOWER_DEFAULTS["attackSpeed"] + 0.01
+_TOWER_HP_TAG = TOWER_DEFAULTS["health"] + 0.1
+_TOWER_HP_POS = TOWER_DEFAULTS["health"] + 0.01
+_TOWER_ARM_POS = TOWER_DEFAULTS["armor"] + 0.01
+_TOWER_RNG_POS = TOWER_DEFAULTS["range"] + 0.01
+_HARV_HP_TAG = HARVESTER_DEFAULTS["health"] + 0.1
+_HARV_HP_POS = HARVESTER_DEFAULTS["health"] + 0.01
+_HARV_RNG_POS = HARVESTER_DEFAULTS["harvestRange"] + 0.01
+_HARV_AMT_POS = HARVESTER_DEFAULTS["harvestAmount"] + 0.01
+_HARV_INT_TAG = HARVESTER_DEFAULTS["harvestInterval"] - 0.01
+_HARV_SPD_POS = (1.0 / HARVESTER_DEFAULTS["harvestInterval"]) + 0.01
 
 
 def lighten_stat_filter_color(color: str, amount: float = 0.82) -> str:
@@ -343,16 +376,26 @@ def validate_units_json(data: Any, *, require_cursed: bool = False) -> int:
     if not isinstance(raw_units, list):
         raise ValueError("JSON must contain a list of units.")
 
-    records = [
-        unit
-        for unit in raw_units
-        if isinstance(unit, dict) and str(unit.get("word", "")).strip()
-    ]
-    if not records:
+    count = 0
+    has_cursed = False
+    for unit in raw_units:
+        if not isinstance(unit, dict):
+            continue
+        word = unit.get("word")
+        if isinstance(word, str):
+            if not word or (word[0].isspace() and not word.strip()):
+                continue
+        elif not str(word or "").strip():
+            continue
+        count += 1
+        if require_cursed and not has_cursed and unit.get("isCursed"):
+            has_cursed = True
+
+    if count == 0:
         raise ValueError("No word records were found.")
-    if require_cursed and not any(unit.get("isCursed") for unit in records):
+    if require_cursed and not has_cursed:
         raise ValueError("No cursed towers were found.")
-    return len(records)
+    return count
 
 
 def format_file_size(size_bytes: int) -> str:
@@ -401,133 +444,304 @@ class UnitRecord:
     )
 
     def __init__(self, u: Dict[str, Any]):
-        w = str(u.get("word", "")).strip().lower()
+        get = u.get
+        raw_word = get("word", "")
+        w = (
+            raw_word.strip().lower()
+            if type(raw_word) is str
+            else str(raw_word).strip().lower()
+        )
         self.word = w
         self.word_upper = w.upper()
         self.length = len(w)
 
         mask = 0
+        char_bits = _CHAR_BITS
         for ch in w:
-            o = ord(ch) - 97
-            if 0 <= o < 26:
-                mask |= 1 << o
+            bit = char_bits.get(ch)
+            if bit is not None:
+                mask |= bit
         self.mask = mask
 
-        self.raw_kind: str = str(u.get("kind", "TOWER"))
-        self.kind: str = normalize_kind(self.raw_kind)
-        self.scrabble: int = int(u.get("scrabble", 0))
+        raw_kind = get("kind", "TOWER")
+        if type(raw_kind) is not str:
+            raw_kind = str(raw_kind)
+        self.raw_kind: str = raw_kind
+        kind = _KIND_LOOKUP.get(raw_kind)
+        if kind is None:
+            kind = normalize_kind(raw_kind)
+        self.kind: str = kind
 
-        # Tower stats
-        self.damage: Optional[float] = float(u["damage"]) if "damage" in u else None
-        self.range: Optional[float] = float(u["range"]) if "range" in u else None
-        self.attack_interval: Optional[float] = (
-            float(u["attackInterval"]) if "attackInterval" in u else None
-        )
-        if self.attack_interval and self.attack_interval > 0:
-            self.attack_speed: Optional[float] = 1.0 / self.attack_interval + 1.0
-            self.attacks_per_second: Optional[float] = attack_rate_from_stat(
-                self.attack_speed
-            )
-        else:
-            self.attack_speed = None
-            self.attacks_per_second = None
-        self.dps: Optional[float] = None
-
-        self.health: Optional[float] = float(u["health"]) if "health" in u else None
-        self.armor: Optional[float] = (
-            float(u["armor"]) if "armor" in u else (0.0 if self.kind == "TOWER" else None)
-        )
-        self.targeting: str = str(u.get("targeting", ""))
-        self.is_cursed: bool = bool(u.get("isCursed", False))
-        self.curse_effects: Tuple[str, ...] = tuple(
-            str(effect) for effect in u.get("curseEffects", [])
+        raw_scrabble = get("scrabble", 0)
+        self.scrabble: int = (
+            raw_scrabble if type(raw_scrabble) is int else int(raw_scrabble)
         )
 
-        # Harvester stats
-        self.harvest_amount: Optional[float] = (
-            float(u["harvestAmount"]) if "harvestAmount" in u else None
+        is_cursed = bool(get("isCursed", False))
+        self.is_cursed: bool = is_cursed
+        raw_curse_effects = get("curseEffects") if is_cursed else None
+        curse_effects: Tuple[str, ...] = (
+            tuple([str(effect) for effect in raw_curse_effects])
+            if raw_curse_effects
+            else ()
         )
-        self.harvest_interval: Optional[float] = (
-            float(u["harvestInterval"]) if "harvestInterval" in u else None
-        )
-        if self.harvest_interval and self.harvest_interval > 0:
-            self.harvest_speed: Optional[float] = 1.0 / self.harvest_interval
-            self.harvest_rate: Optional[float] = (
-                self.harvest_amount / self.harvest_interval
-                if self.harvest_amount is not None
-                else None
-            )
-        else:
-            self.harvest_speed = None
-            self.harvest_rate = None
+        self.curse_effects = curse_effects
 
-        self.harvest_types: Optional[int] = (
-            int(u["harvestTypes"]) if "harvestTypes" in u else None
-        )
-        self.harvest_range: Optional[float] = (
-            float(u["harvestRange"]) if "harvestRange" in u else None
-        )
-        self.harvest_resources: Tuple[str, ...] = tuple(u.get("harvestResources", []))
+        damage: Optional[float] = None
+        rng: Optional[float] = None
+        attack_interval: Optional[float] = None
+        attack_speed: Optional[float] = None
+        attacks_per_second: Optional[float] = None
+        dps: Optional[float] = None
+        health: Optional[float] = None
+        armor: Optional[float] = None
+        targeting = ""
+        harvest_amount: Optional[float] = None
+        harvest_interval: Optional[float] = None
+        harvest_speed: Optional[float] = None
+        harvest_rate: Optional[float] = None
+        harvest_types: Optional[int] = None
+        harvest_range: Optional[float] = None
+        harvest_resources: Tuple[str, ...] = ()
+        specials: Tuple[Tuple[str, float], ...] = ()
+        deltas: Tuple[Tuple[str, str, float], ...] = ()
 
-        # Specials & Deltas
-        self.specials: Tuple[Tuple[str, float], ...] = tuple(
-            (str(s.get("name", "")), float(s.get("value", 0.0)))
-            for s in u.get("specials", [])
-        )
-        if self.damage is not None and self.attacks_per_second is not None:
-            crit_stat = self._special_val("crit")
-            if crit_stat is None:
-                crit_stat = 0.0
-            crit_chance = crit_chance_from_stat(crit_stat)
-            crit_multiplier = crit_multiplier_from_stat(crit_stat)
-            expected_crit_factor = 1.0 + crit_chance * (crit_multiplier - 1.0)
-            self.dps = (
-                self.damage * self.attacks_per_second * expected_crit_factor
-            )
-        self.deltas: Tuple[Tuple[str, str, float], ...] = tuple(
-            (str(d.get("stat", "")), str(d.get("op", "")), float(d.get("value", 0.0)))
-            for d in u.get("deltas", [])
-        )
-
-        # Searchable effect / boosted-stat / resource tags
         tags: Set[str] = set()
-        for name, _ in self.specials:
-            tags.add(name)
-        for stat, _, _ in self.deltas:
-            tags.add(stat)
-        for res in self.harvest_resources:
-            tags.add(f"res:{res}")
-        if self.is_cursed:
+        pos_mask = 0
+        base_covered_mask = _BIT_CURSE
+
+        if is_cursed:
             tags.add("curse")
-            tags.update(self.curse_effects)
+            if curse_effects:
+                tags.update(curse_effects)
+            pos_mask |= _BIT_CURSE
 
-        # Also tag towers/harvesters with boosted base stats so filtering works intuitively
-        if self.kind == "TOWER":
-            if self.damage is not None and self.damage > TOWER_DEFAULTS["damage"] + 0.01:
-                tags.add("damage")
-            if self.attack_speed is not None and self.attack_speed > TOWER_DEFAULTS["attackSpeed"] + 0.01:
-                tags.add("attack_speed")
-            if self.health is not None and self.health > TOWER_DEFAULTS["health"] + 0.1:
-                tags.add("toughness")
-            if self.armor is not None and self.armor > TOWER_DEFAULTS["armor"] + 0.01:
-                tags.add("armor")
-            if self.range is not None and self.range > TOWER_DEFAULTS["range"] + 0.01:
-                tags.add("range")
-        elif self.kind == "HARVESTER":
-            if self.health is not None and self.health > HARVESTER_DEFAULTS["health"] + 0.1:
-                tags.add("toughness")
-            if self.armor is not None and self.armor > 0.01:
-                tags.add("armor")
-            if self.harvest_range is not None and self.harvest_range > HARVESTER_DEFAULTS["harvestRange"] + 0.01:
-                tags.add("range")
-            if self.harvest_amount is not None and self.harvest_amount > HARVESTER_DEFAULTS["harvestAmount"] + 0.01:
-                tags.add("harvest_amount")
-            if self.harvest_interval is not None and self.harvest_interval < HARVESTER_DEFAULTS["harvestInterval"] - 0.01:
-                tags.add("harvest_speed")
+        if kind == "TOWER":
+            raw_damage = get("damage")
+            if raw_damage is not None:
+                damage = float(raw_damage)
+                base_covered_mask |= _BIT_DAMAGE
+                if damage > _TOWER_DMG_POS:
+                    tags.add("damage")
+                    pos_mask |= _BIT_DAMAGE
 
+            raw_range = get("range")
+            if raw_range is not None:
+                rng = float(raw_range)
+                base_covered_mask |= _BIT_RANGE
+                if rng > _TOWER_RNG_POS:
+                    tags.add("range")
+                    pos_mask |= _BIT_RANGE
+
+            raw_atk_int = get("attackInterval")
+            if raw_atk_int is not None:
+                attack_interval = float(raw_atk_int)
+                if attack_interval > 0:
+                    attack_speed = 1.0 / attack_interval + 1.0
+                    attacks_per_second = (
+                        (attack_speed if attack_speed > 0.01 else 0.01) / 2.0
+                    ) ** 0.78
+                    base_covered_mask |= _BIT_ATTACK_SPEED
+                    if attack_speed > _TOWER_SPD_POS:
+                        tags.add("attack_speed")
+                        pos_mask |= _BIT_ATTACK_SPEED
+
+            raw_health = get("health")
+            if raw_health is not None:
+                health = float(raw_health)
+                base_covered_mask |= _BIT_TOUGHNESS
+                if health > _TOWER_HP_POS:
+                    pos_mask |= _BIT_TOUGHNESS
+                    if health > _TOWER_HP_TAG:
+                        tags.add("toughness")
+
+            raw_armor = get("armor")
+            armor = float(raw_armor) if raw_armor is not None else 0.0
+            base_covered_mask |= _BIT_ARMOR
+            if armor > _TOWER_ARM_POS:
+                tags.add("armor")
+                pos_mask |= _BIT_ARMOR
+
+            raw_targeting = get("targeting", "")
+            targeting = (
+                raw_targeting
+                if type(raw_targeting) is str
+                else str(raw_targeting)
+            )
+
+            raw_specials = get("specials")
+            if raw_specials:
+                specials = tuple(
+                    [
+                        (str(s.get("name", "")), float(s.get("value", 0.0)))
+                        for s in raw_specials
+                    ]
+                )
+
+            if damage is not None and attacks_per_second is not None:
+                crit_stat = 0.0
+                for sp_name, val in specials:
+                    if sp_name == "crit":
+                        crit_stat = val
+                        break
+                dps = damage * attacks_per_second * (1.1 + 0.007 * crit_stat)
+
+            raw_deltas = get("deltas")
+            if raw_deltas:
+                deltas = tuple(
+                    [
+                        (
+                            str(d.get("stat", "")),
+                            str(d.get("op", "")),
+                            float(d.get("value", 0.0)),
+                        )
+                        for d in raw_deltas
+                    ]
+                )
+        elif kind == "HARVESTER":
+            raw_health = get("health")
+            if raw_health is not None:
+                health = float(raw_health)
+                base_covered_mask |= _BIT_TOUGHNESS
+                if health > _HARV_HP_POS:
+                    pos_mask |= _BIT_TOUGHNESS
+                    if health > _HARV_HP_TAG:
+                        tags.add("toughness")
+
+            raw_armor = get("armor")
+            if raw_armor is not None:
+                armor = float(raw_armor)
+                base_covered_mask |= _BIT_ARMOR
+                if armor > 0.01:
+                    tags.add("armor")
+                    pos_mask |= _BIT_ARMOR
+
+            raw_h_amt = get("harvestAmount")
+            if raw_h_amt is not None:
+                harvest_amount = float(raw_h_amt)
+                base_covered_mask |= _BIT_HARVEST_AMOUNT
+                if harvest_amount > _HARV_AMT_POS:
+                    tags.add("harvest_amount")
+                    pos_mask |= _BIT_HARVEST_AMOUNT
+
+            raw_h_int = get("harvestInterval")
+            if raw_h_int is not None:
+                harvest_interval = float(raw_h_int)
+                if harvest_interval > 0:
+                    harvest_speed = 1.0 / harvest_interval
+                    if harvest_amount is not None:
+                        harvest_rate = harvest_amount / harvest_interval
+                    base_covered_mask |= _BIT_HARVEST_SPEED
+                    if harvest_speed > _HARV_SPD_POS:
+                        pos_mask |= _BIT_HARVEST_SPEED
+                if harvest_interval < _HARV_INT_TAG:
+                    tags.add("harvest_speed")
+
+            raw_h_types = get("harvestTypes")
+            if raw_h_types is not None:
+                harvest_types = int(raw_h_types)
+
+            raw_h_rng = get("harvestRange")
+            if raw_h_rng is not None:
+                harvest_range = float(raw_h_rng)
+                base_covered_mask |= _BIT_RANGE
+                if harvest_range > _HARV_RNG_POS:
+                    tags.add("range")
+                    pos_mask |= _BIT_RANGE
+
+            raw_h_res = get("harvestResources")
+            if raw_h_res:
+                harvest_resources = tuple(raw_h_res)
+                for res in harvest_resources:
+                    tags.add(f"res:{res}")
+
+            raw_specials = get("specials")
+            if raw_specials:
+                specials = tuple(
+                    [
+                        (str(s.get("name", "")), float(s.get("value", 0.0)))
+                        for s in raw_specials
+                    ]
+                )
+
+            raw_deltas = get("deltas")
+            if raw_deltas:
+                deltas = tuple(
+                    [
+                        (
+                            str(d.get("stat", "")),
+                            str(d.get("op", "")),
+                            float(d.get("value", 0.0)),
+                        )
+                        for d in raw_deltas
+                    ]
+                )
+        else:  # MOD
+            raw_deltas = get("deltas")
+            if raw_deltas:
+                deltas = tuple(
+                    [
+                        (
+                            str(d.get("stat", "")),
+                            str(d.get("op", "")),
+                            float(d.get("value", 0.0)),
+                        )
+                        for d in raw_deltas
+                    ]
+                )
+            raw_specials = get("specials")
+            if raw_specials:
+                specials = tuple(
+                    [
+                        (str(s.get("name", "")), float(s.get("value", 0.0)))
+                        for s in raw_specials
+                    ]
+                )
+
+        if deltas or specials:
+            seen_ds_mask = base_covered_mask
+            filter_bits = STAT_FILTER_BITS
+            for stat, op, value in deltas:
+                tags.add(stat)
+                bit = filter_bits.get(stat)
+                if bit is not None and not (seen_ds_mask & bit):
+                    seen_ds_mask |= bit
+                    change = (
+                        value - 1.0
+                        if (op == "mult" or op.lower() == "mult")
+                        else value
+                    )
+                    if change > 0.01:
+                        pos_mask |= bit
+            for name, value in specials:
+                tags.add(name)
+                bit = filter_bits.get(name)
+                if bit is not None and not (seen_ds_mask & bit):
+                    seen_ds_mask |= bit
+                    if value > 0.01:
+                        pos_mask |= bit
+
+        self.damage = damage
+        self.range = rng
+        self.attack_interval = attack_interval
+        self.attack_speed = attack_speed
+        self.attacks_per_second = attacks_per_second
+        self.dps = dps
+        self.health = health
+        self.armor = armor
+        self.targeting = targeting
+        self.harvest_amount = harvest_amount
+        self.harvest_interval = harvest_interval
+        self.harvest_speed = harvest_speed
+        self.harvest_rate = harvest_rate
+        self.harvest_types = harvest_types
+        self.harvest_range = harvest_range
+        self.harvest_resources = harvest_resources
+        self.specials = specials
+        self.deltas = deltas
         self.effect_tags = frozenset(tags)
         self._preview_stats: Optional[List[Tuple[str, str, str]]] = None
-        self._positive_stat_mask = self._build_positive_stat_mask()
+        self._positive_stat_mask = pos_mask
 
     def _special_val(self, name: str) -> Optional[float]:
         for sp_name, val in self.specials:
@@ -810,18 +1024,28 @@ class UnitRecord:
         return items
 
 
+CLEVER_MAX_COMBINATIONS = 5000
+CLEVER_TIME_LIMIT_SECONDS = 2.0
+
+
 def find_exact_word_combinations(
     records: List[UnitRecord],
     available_letters: str,
     include_two_letter_words: bool,
-) -> List[Tuple[UnitRecord, ...]]:
+    *,
+    max_combinations: int = CLEVER_MAX_COMBINATIONS,
+    time_limit_seconds: float = CLEVER_TIME_LIMIT_SECONDS,
+    cancel_event: Optional[threading.Event] = None,
+) -> Tuple[List[Tuple[UnitRecord, ...]], bool]:
+    if cancel_event is not None and cancel_event.is_set():
+        return [], False
     rack = [
         ch.lower()
         for ch in available_letters
         if ("a" <= ch.lower() <= "z") or ch in ("?", "*")
     ]
     if not rack:
-        return []
+        return [], False
 
     rack_counts = [0] * 26
     wildcards = 0
@@ -833,13 +1057,21 @@ def find_exact_word_combinations(
 
     rack_length = len(rack)
     min_word_length = 2 if include_two_letter_words else 3
-    candidates: List[UnitRecord] = []
-    signatures: List[Tuple[int, ...]] = []
-    candidate_lengths: List[int] = []
-    candidates_by_letter: List[List[int]] = [[] for _ in range(26)]
+    if rack_length < min_word_length:
+        return [], False
 
+    rack_mask = 0
+    for letter_index, count in enumerate(rack_counts):
+        if count:
+            rack_mask |= 1 << letter_index
+    not_rack_mask = ~rack_mask
+
+    # Group candidate words by exact letter-count signature (anagram buckets).
+    groups_by_sig: Dict[Tuple[int, ...], List[UnitRecord]] = {}
     for rec in sorted(records, key=lambda item: item.word):
         if rec.length < min_word_length or rec.length > rack_length:
+            continue
+        if wildcards == 0 and (rec.mask & not_rack_mask):
             continue
         counts = [0] * 26
         valid_word = True
@@ -850,78 +1082,286 @@ def find_exact_word_combinations(
             counts[ord(ch) - ord("a")] += 1
         if not valid_word:
             continue
-        if sum(max(0, counts[i] - rack_counts[i]) for i in range(26)) > wildcards:
-            continue
-
-        candidate_index = len(candidates)
-        candidates.append(rec)
-        signatures.append(tuple(counts))
-        candidate_lengths.append(rec.length)
-        for letter_index, count in enumerate(counts):
-            if count:
-                candidates_by_letter[letter_index].append(candidate_index)
-
-    if not candidates:
-        return []
-
-    def consume_word(
-        remaining: Tuple[int, ...],
-        wildcards_left: int,
-        signature: Tuple[int, ...],
-    ) -> Optional[Tuple[Tuple[int, ...], int]]:
-        updated: List[int] = []
         wildcards_needed = 0
-        for available, needed in zip(remaining, signature):
-            used = min(available, needed)
-            updated.append(available - used)
-            wildcards_needed += needed - used
-        if wildcards_needed > wildcards_left:
-            return None
-        return tuple(updated), wildcards_left - wildcards_needed
+        for i in range(26):
+            if counts[i] > rack_counts[i]:
+                wildcards_needed += counts[i] - rack_counts[i]
+                if wildcards_needed > wildcards:
+                    break
+        if wildcards_needed > wildcards:
+            continue
+        groups_by_sig.setdefault(tuple(counts), []).append(rec)
 
-    @lru_cache(maxsize=None)
-    def solve(
-        remaining: Tuple[int, ...], wildcards_left: int
-    ) -> Tuple[Tuple[int, ...], ...]:
-        remaining_length = sum(remaining) + wildcards_left
-        if remaining_length == 0:
-            return ((),)
-        if remaining_length < min_word_length:
-            return ()
+    if not groups_by_sig:
+        return [], False
 
-        remaining_letters = [
-            index for index, count in enumerate(remaining) if count
-        ]
-        if remaining_letters:
-            pivot = min(
-                remaining_letters,
-                key=lambda index: len(candidates_by_letter[index]),
+    ordered_sigs = sorted(
+        groups_by_sig.keys(), key=lambda sig: groups_by_sig[sig][0].word
+    )
+    group_words: List[Tuple[UnitRecord, ...]] = []
+    group_sigs: List[Tuple[int, ...]] = []
+    group_sparse: List[Tuple[Tuple[int, int], ...]] = []
+    group_masks: List[int] = []
+    group_lens: List[int] = []
+    sig_to_group: Dict[Tuple[int, ...], int] = {}
+    groups_by_len: Dict[int, List[int]] = {}
+    groups_by_letter: List[List[int]] = [[] for _ in range(26)]
+    groups_by_letter_and_len: Dict[Tuple[int, int], List[int]] = {}
+
+    for gi, sig in enumerate(ordered_sigs):
+        words = tuple(groups_by_sig[sig])
+        word_len = words[0].length
+        sparse = tuple((i, c) for i, c in enumerate(sig) if c)
+        mask = 0
+        for i, _ in sparse:
+            mask |= 1 << i
+            groups_by_letter[i].append(gi)
+            groups_by_letter_and_len.setdefault((i, word_len), []).append(gi)
+
+        group_words.append(words)
+        group_sigs.append(sig)
+        group_sparse.append(sparse)
+        group_masks.append(mask)
+        group_lens.append(word_len)
+        sig_to_group[sig] = gi
+        groups_by_len.setdefault(word_len, []).append(gi)
+
+    max_group_len = max(group_lens)
+    max_words = rack_length // min_word_length
+    deadline = time.monotonic() + time_limit_seconds
+
+    results: List[Tuple[UnitRecord, ...]] = []
+    seen_sig_combos: Set[Tuple[int, ...]] = set()
+    failed_states: Set[Tuple[Tuple[int, ...], int, int]] = set()
+    truncated = False
+    stopped = False
+    steps = 0
+
+    def check_stop() -> bool:
+        nonlocal steps, stopped, truncated
+        if stopped:
+            return True
+        steps += 1
+        if (steps & 255) == 0:
+            if cancel_event is not None and cancel_event.is_set():
+                stopped = True
+                return True
+            if time.monotonic() >= deadline:
+                truncated = True
+                stopped = True
+                return True
+        return False
+
+    def emit_sig_combo(sig_combo: Tuple[int, ...]) -> None:
+        nonlocal truncated, stopped
+        if sig_combo in seen_sig_combos:
+            return
+        seen_sig_combos.add(sig_combo)
+
+        factor_lists: List[Tuple[Tuple[UnitRecord, ...], ...]] = []
+        idx = 0
+        n_sig = len(sig_combo)
+        while idx < n_sig:
+            gi = sig_combo[idx]
+            end = idx + 1
+            while end < n_sig and sig_combo[end] == gi:
+                end += 1
+            mult = end - idx
+            if mult == 1:
+                factor_lists.append(tuple((w,) for w in group_words[gi]))
+            else:
+                factor_lists.append(
+                    tuple(combinations_with_replacement(group_words[gi], mult))
+                )
+            idx = end
+
+        for chunks in product(*factor_lists):
+            flat = tuple(
+                sorted(
+                    (rec for chunk in chunks for rec in chunk),
+                    key=lambda item: item.word,
+                )
             )
-            candidate_indexes = candidates_by_letter[pivot]
+            results.append(flat)
+            if len(results) >= max_combinations:
+                truncated = True
+                stopped = True
+                return
+
+    def consume_group(
+        remaining: Tuple[int, ...],
+        rem_mask: int,
+        wildcards_left: int,
+        gi: int,
+    ) -> Optional[Tuple[Tuple[int, ...], int, int]]:
+        if wildcards_left == 0:
+            if group_masks[gi] & ~rem_mask:
+                return None
+            for letter_idx, need in group_sparse[gi]:
+                if need > remaining[letter_idx]:
+                    return None
+            updated = list(remaining)
+            new_mask = rem_mask
+            for letter_idx, need in group_sparse[gi]:
+                left = updated[letter_idx] - need
+                updated[letter_idx] = left
+                if left == 0:
+                    new_mask &= ~(1 << letter_idx)
+            return tuple(updated), new_mask, 0
+
+        wildcards_needed = 0
+        for letter_idx, need in group_sparse[gi]:
+            avail = remaining[letter_idx]
+            if need > avail:
+                wildcards_needed += need - avail
+                if wildcards_needed > wildcards_left:
+                    return None
+        updated = list(remaining)
+        new_mask = rem_mask
+        for letter_idx, need in group_sparse[gi]:
+            avail = updated[letter_idx]
+            if need < avail:
+                updated[letter_idx] = avail - need
+            elif avail:
+                updated[letter_idx] = 0
+                new_mask &= ~(1 << letter_idx)
+        return tuple(updated), new_mask, wildcards_left - wildcards_needed
+
+    def dfs(
+        remaining: Tuple[int, ...],
+        rem_mask: int,
+        rem_len: int,
+        wildcards_left: int,
+        words_left: int,
+        path: Tuple[int, ...],
+    ) -> bool:
+        if check_stop():
+            return False
+        if (
+            rem_len < words_left * min_word_length
+            or rem_len > words_left * max_group_len
+        ):
+            return False
+
+        if words_left == 1:
+            if wildcards_left == 0:
+                gi = sig_to_group.get(remaining)
+                if gi is None:
+                    return False
+                emit_sig_combo(tuple(sorted(path + (gi,))))
+                return True
+
+            if rem_mask == 0:
+                cands = groups_by_len.get(rem_len)
+                if not cands:
+                    return False
+                for gi in cands:
+                    emit_sig_combo(tuple(sorted(path + (gi,))))
+                    if stopped or check_stop():
+                        return True
+                return True
+
+            pivot = -1
+            best_count = 1 << 30
+            rem_pairs: List[Tuple[int, int]] = []
+            mask_iter = rem_mask
+            while mask_iter:
+                bit = mask_iter & -mask_iter
+                letter_idx = bit.bit_length() - 1
+                mask_iter ^= bit
+                rem_pairs.append((letter_idx, remaining[letter_idx]))
+                bucket = groups_by_letter_and_len.get((letter_idx, rem_len))
+                if not bucket:
+                    return False
+                if len(bucket) < best_count:
+                    best_count = len(bucket)
+                    pivot = letter_idx
+
+            found_any = False
+            for gi in groups_by_letter_and_len[(pivot, rem_len)]:
+                if (group_masks[gi] & rem_mask) != rem_mask:
+                    continue
+                sig = group_sigs[gi]
+                ok = True
+                for letter_idx, need_avail in rem_pairs:
+                    if sig[letter_idx] < need_avail:
+                        ok = False
+                        break
+                if ok:
+                    found_any = True
+                    emit_sig_combo(tuple(sorted(path + (gi,))))
+                    if stopped or check_stop():
+                        return True
+            return found_any
+
+        state_key = (remaining, wildcards_left, words_left)
+        if state_key in failed_states:
+            return False
+
+        if rem_mask != 0:
+            pivot = -1
+            best_count = 1 << 30
+            mask_iter = rem_mask
+            while mask_iter:
+                bit = mask_iter & -mask_iter
+                letter_idx = bit.bit_length() - 1
+                mask_iter ^= bit
+                bucket = groups_by_letter[letter_idx]
+                if not bucket:
+                    failed_states.add(state_key)
+                    return False
+                if len(bucket) < best_count:
+                    best_count = len(bucket)
+                    pivot = letter_idx
+            candidate_groups = groups_by_letter[pivot]
         else:
-            candidate_indexes = range(len(candidates))
+            candidate_groups = range(len(group_words))
 
-        combinations: Set[Tuple[int, ...]] = set()
-        for candidate_index in candidate_indexes:
-            if candidate_lengths[candidate_index] > remaining_length:
+        max_next_len = rem_len - (words_left - 1) * min_word_length
+        min_next_len = max(
+            min_word_length, rem_len - (words_left - 1) * max_group_len
+        )
+        found_any = False
+        for gi in candidate_groups:
+            glen = group_lens[gi]
+            if glen < min_next_len or glen > max_next_len:
                 continue
-            next_state = consume_word(
-                remaining,
-                wildcards_left,
-                signatures[candidate_index],
-            )
+            next_state = consume_group(remaining, rem_mask, wildcards_left, gi)
             if next_state is None:
                 continue
-            next_remaining, next_wildcards = next_state
-            for suffix in solve(next_remaining, next_wildcards):
-                combinations.add(tuple(sorted((candidate_index,) + suffix)))
-        return tuple(sorted(combinations))
+            next_rem, next_mask, next_wild = next_state
+            if dfs(
+                next_rem,
+                next_mask,
+                rem_len - glen,
+                next_wild,
+                words_left - 1,
+                path + (gi,),
+            ):
+                found_any = True
+            if stopped:
+                return found_any
 
-    index_combinations = solve(tuple(rack_counts), wildcards)
-    return [
-        tuple(candidates[index] for index in combination)
-        for combination in index_combinations
-    ]
+        if not found_any and not stopped:
+            failed_states.add(state_key)
+        return found_any
+
+    initial_remaining = tuple(rack_counts)
+    # Iterative deepening by word count finds shortest combinations first.
+    for target_words in range(1, max_words + 1):
+        if stopped:
+            break
+        dfs(
+            initial_remaining,
+            rack_mask,
+            rack_length,
+            wildcards,
+            target_words,
+            (),
+        )
+
+    results.sort(key=lambda combo: (len(combo), tuple(rec.word for rec in combo)))
+    return results, truncated
 
 
 class UnitDatabase:
@@ -930,6 +1370,7 @@ class UnitDatabase:
     def __init__(self):
         self.units: List[UnitRecord] = []
         self.available_tags: Set[str] = set()
+        self.revision: int = 0
         self._base_records: List[UnitRecord] = []
         self._extra_records: List[UnitRecord] = []
         self.blacklist_path = resolve_blacklist_path()
@@ -937,6 +1378,17 @@ class UnitDatabase:
         self.blacklist_source_label = ""
         self.blacklist_size_bytes: Optional[int] = None
         self.blacklist_loaded = False
+        self._blacklist_checked = False
+        self.extra_source_path: str = ""
+        self.extra_source_size_bytes: Optional[int] = None
+        self.max_len: int = 15
+        self.source_path: str = ""
+        self.source_size_bytes: Optional[int] = None
+
+    def ensure_blacklist_loaded(self) -> None:
+        if self._blacklist_checked:
+            return
+        self._blacklist_checked = True
         try:
             if self.blacklist_path.is_file():
                 contents = self.blacklist_path.read_bytes()
@@ -949,34 +1401,35 @@ class UnitDatabase:
         except (OSError, UnicodeDecodeError) as exc:
             print(f"Could not load {self.blacklist_path.name}: {exc}")
 
-        self.extra_source_path: str = ""
-        self.extra_source_size_bytes: Optional[int] = None
-        self.max_len: int = 15
-        self.source_path: str = ""
-        self.source_size_bytes: Optional[int] = None
-
     def load_data(
         self,
         data: Any,
         source_label: str = "",
         source_size_bytes: Optional[int] = None,
+        *,
+        refresh: bool = True,
     ) -> int:
+        self.ensure_blacklist_loaded()
         raw_units = data.get("units", []) if isinstance(data, dict) else data
+        unit_record = UnitRecord
         records: List[UnitRecord] = []
+        append = records.append
 
         for u in raw_units:
-            if not isinstance(u, dict) or "word" not in u:
+            if type(u) is not dict and not isinstance(u, dict):
                 continue
-            rec = UnitRecord(u)
-            if not rec.word:
+            if "word" not in u:
                 continue
-            records.append(rec)
+            rec = unit_record(u)
+            if rec.word:
+                append(rec)
 
         self._base_records = records
         self.source_path = source_label
         self.source_size_bytes = source_size_bytes
-        self._refresh_records()
-        return len(self.units)
+        if refresh:
+            self._refresh_records()
+        return len(self.units) if refresh else len(records)
 
     def load_file(self, filepath: str) -> int:
         raw_bytes = Path(filepath).read_bytes()
@@ -992,19 +1445,28 @@ class UnitDatabase:
         data: Any,
         source_label: str = "",
         source_size_bytes: Optional[int] = None,
+        *,
+        refresh: bool = True,
     ) -> int:
+        self.ensure_blacklist_loaded()
         raw_units = data.get("units", []) if isinstance(data, dict) else data
+        unit_record = UnitRecord
         records: List[UnitRecord] = []
+        append = records.append
         for u in raw_units:
-            if not isinstance(u, dict) or "word" not in u:
+            if type(u) is not dict and not isinstance(u, dict):
                 continue
-            rec = UnitRecord(u)
+            if "word" not in u:
+                continue
+            rec = unit_record(u)
             if rec.word:
-                records.append(rec)
+                append(rec)
 
         self._extra_records = records
         self.extra_source_path = source_label
         self.extra_source_size_bytes = source_size_bytes
+        if not refresh:
+            return len(records)
         self._refresh_records()
         base_ids = {id(record) for record in self._base_records}
         return sum(1 for record in self.units if id(record) not in base_ids)
@@ -1024,6 +1486,7 @@ class UnitDatabase:
         source_label: str = "",
         source_size_bytes: Optional[int] = None,
     ) -> int:
+        self._blacklist_checked = True
         self.blacklisted_words = parse_word_list(contents)
         if source_label:
             self.blacklist_source_label = source_label
@@ -1037,35 +1500,45 @@ class UnitDatabase:
         return len(self.units)
 
     def _refresh_records(self) -> None:
+        self.ensure_blacklist_loaded()
         records: List[UnitRecord] = []
+        append = records.append
         tags: Set[str] = set()
+        tags_update = tags.update
         max_len = 2
+        blacklisted = self.blacklisted_words
         base_words: Set[str] = set()
+        base_add = base_words.add
 
         for record in self._base_records:
-            word = record.word.strip().lower()
-            base_words.add(word)
-            if word in self.blacklisted_words:
+            word = record.word
+            base_add(word)
+            if word in blacklisted:
                 continue
-            records.append(record)
+            append(record)
+            tags_update(record.effect_tags)
+            if record.length > max_len:
+                max_len = record.length
 
-        extra_words: Set[str] = set()
-        for record in self._extra_records:
-            word = record.word.strip().lower()
-            if word in base_words or word in extra_words:
-                continue
-            extra_words.add(word)
-            if word in self.blacklisted_words:
-                continue
-            records.append(record)
-
-        for record in records:
-            tags.update(record.effect_tags)
-            max_len = max(max_len, record.length)
+        if self._extra_records:
+            extra_words: Set[str] = set()
+            extra_add = extra_words.add
+            for record in self._extra_records:
+                word = record.word
+                if word in base_words or word in extra_words:
+                    continue
+                extra_add(word)
+                if word in blacklisted:
+                    continue
+                append(record)
+                tags_update(record.effect_tags)
+                if record.length > max_len:
+                    max_len = record.length
 
         self.units = records
         self.available_tags = tags
         self.max_len = max_len
+        self.revision += 1
 
     def get_ordered_effect_options(self) -> Dict[str, str]:
         """Build the Effect / Resource select options in the exact requested order."""
@@ -1260,70 +1733,115 @@ class UnitDatabase:
 # Shared Database Loader
 # ---------------------------------------------------------------------------
 GLOBAL_DB = UnitDatabase()
+DB_LOAD_EVENT = threading.Event()
+_DB_AUTOLOAD_STARTED = False
 
 
 def autoload_database() -> Optional[str]:
-    if getattr(sys, "frozen", False):
-        app_dir = Path(sys.executable).resolve().parent
-    else:
-        app_dir = Path(__file__).resolve().parent
-    cwd = Path.cwd()
-    roots = list(dict.fromkeys((app_dir, cwd)))
-    unit_paths = [
-        root / name
-        for root in roots
-        for name in ("units.json", "units_2.json")
-    ]
-    loaded_paths: List[str] = []
+    try:
+        GLOBAL_DB.ensure_blacklist_loaded()
+        if getattr(sys, "frozen", False):
+            app_dir = Path(sys.executable).resolve().parent
+        else:
+            app_dir = Path(__file__).resolve().parent
+        cwd = Path.cwd()
+        roots = list(dict.fromkeys((app_dir, cwd)))
+        unit_paths = [
+            root / name
+            for root in roots
+            for name in ("units.json", "units_2.json")
+        ]
+        loaded_paths: List[str] = []
 
-    for path in unit_paths:
-        if path.is_file():
-            try:
-                raw_bytes = path.read_bytes()
-                data = json.loads(raw_bytes.decode("utf-8"))
-                validate_units_json(data)
-                GLOBAL_DB.load_data(
-                    data,
-                    source_label=str(path),
-                    source_size_bytes=len(raw_bytes),
-                )
-                loaded_paths.append(str(path))
-                break
-            except (
-                OSError,
-                UnicodeDecodeError,
-                json.JSONDecodeError,
-                KeyError,
-                TypeError,
-                ValueError,
-            ) as exc:
-                print(f"Could not load {path.name}: {exc}")
+        for path in unit_paths:
+            if path.is_file():
+                try:
+                    raw_bytes = path.read_bytes()
+                    data = json.loads(raw_bytes)
+                    raw_units = data.get("units") if isinstance(data, dict) else data
+                    if not isinstance(raw_units, list):
+                        raise ValueError("JSON must contain a list of units.")
+                    count = GLOBAL_DB.load_data(
+                        data,
+                        source_label=str(path),
+                        source_size_bytes=len(raw_bytes),
+                        refresh=False,
+                    )
+                    if count == 0:
+                        raise ValueError("No word records were found.")
+                    loaded_paths.append(str(path))
+                    break
+                except (
+                    OSError,
+                    UnicodeDecodeError,
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ) as exc:
+                    print(f"Could not load {path.name}: {exc}")
 
-    curse_paths = [root / "cursed_words.json" for root in roots]
-    for path in curse_paths:
-        if path.is_file():
-            try:
-                raw_bytes = path.read_bytes()
-                data = json.loads(raw_bytes.decode("utf-8"))
-                validate_units_json(data, require_cursed=True)
-                GLOBAL_DB.load_extra_data(
-                    data,
-                    source_label=str(path),
-                    source_size_bytes=len(raw_bytes),
-                )
-                loaded_paths.append(str(path))
-                break
-            except (
-                OSError,
-                UnicodeDecodeError,
-                json.JSONDecodeError,
-                KeyError,
-                TypeError,
-                ValueError,
-            ) as exc:
-                print(f"Could not load {path.name}: {exc}")
+        curse_paths = [root / "cursed_words.json" for root in roots]
+        for path in curse_paths:
+            if path.is_file():
+                try:
+                    raw_bytes = path.read_bytes()
+                    data = json.loads(raw_bytes)
+                    raw_units = data.get("units") if isinstance(data, dict) else data
+                    if not isinstance(raw_units, list):
+                        raise ValueError("JSON must contain a list of units.")
+                    count = GLOBAL_DB.load_extra_data(
+                        data,
+                        source_label=str(path),
+                        source_size_bytes=len(raw_bytes),
+                        refresh=False,
+                    )
+                    if count == 0 or not any(
+                        rec.is_cursed for rec in GLOBAL_DB._extra_records
+                    ):
+                        GLOBAL_DB._extra_records = []
+                        GLOBAL_DB.extra_source_path = ""
+                        GLOBAL_DB.extra_source_size_bytes = None
+                        raise ValueError("No cursed towers were found.")
+                    loaded_paths.append(str(path))
+                    break
+                except (
+                    OSError,
+                    UnicodeDecodeError,
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ) as exc:
+                    print(f"Could not load {path.name}: {exc}")
 
-    return " + ".join(loaded_paths) if loaded_paths else None
+        if loaded_paths:
+            GLOBAL_DB._refresh_records()
+
+        return " + ".join(loaded_paths) if loaded_paths else None
+    finally:
+        DB_LOAD_EVENT.set()
+
+
+def start_autoload_in_background() -> threading.Thread:
+    global _DB_AUTOLOAD_STARTED
+    _DB_AUTOLOAD_STARTED = True
+    DB_LOAD_EVENT.clear()
+
+    def _loader() -> None:
+        loaded = autoload_database()
+        if loaded:
+            print(f"Loaded {len(GLOBAL_DB.units):,} units from {loaded}")
+        else:
+            print(
+                "No units.json found automatically — use the settings menu to load files."
+            )
+
+    thread = threading.Thread(
+        target=_loader, name="babble-db-autoload", daemon=True
+    )
+    thread.start()
+    return thread
 
 
 # ---------------------------------------------------------------------------
@@ -1376,9 +1894,7 @@ def build_font_css() -> str:
     return "\n".join(font_css)
 
 
-CUSTOM_CSS = """
-<style>
-""" + build_font_css() + """
+_CUSTOM_CSS_BODY = """
   body {
     background-color: #DDDDDD !important;
     font-family: "Plus Jakarta Sans", "Outfit", Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
@@ -1645,9 +2161,18 @@ CUSTOM_CSS = """
 </style>
 """
 
+_CUSTOM_CSS_CACHE: Optional[str] = None
+
+
+def get_custom_css() -> str:
+    global _CUSTOM_CSS_CACHE
+    if _CUSTOM_CSS_CACHE is None:
+        _CUSTOM_CSS_CACHE = "<style>\n" + build_font_css() + _CUSTOM_CSS_BODY
+    return _CUSTOM_CSS_CACHE
+
 
 def build_nicegui_app():
-    from nicegui import ui
+    from nicegui import background_tasks, ui
 
     PAGE_SIZE = 200
 
@@ -1717,6 +2242,27 @@ def build_nicegui_app():
             # Current search results & pagination
             self.current_matches: List[UnitRecord] = []
             self.current_combinations: List[Tuple[UnitRecord, ...]] = []
+            self.combinations_by_word_count: Dict[
+                int, List[Tuple[UnitRecord, ...]]
+            ] = {}
+            self.combinations_truncated: bool = False
+            self.clever_searching: bool = False
+            self._clever_search_generation: int = 0
+            self._clever_cancel_event: Optional[threading.Event] = None
+            self._clever_task: Optional[asyncio.Task] = None
+            self._cached_base_key: Optional[Tuple[Any, ...]] = None
+            self._cached_base_matches: List[UnitRecord] = []
+            self._cached_stat_counts: Dict[str, int] = {}
+            self._cached_clever_key: Optional[Tuple[Any, ...]] = None
+            self._cached_clever_result: Optional[
+                Tuple[
+                    List[Tuple[UnitRecord, ...]],
+                    Dict[int, List[Tuple[UnitRecord, ...]]],
+                    bool,
+                ]
+            ] = None
+            self.stat_filter_widgets: Dict[str, Tuple[Any, Any]] = {}
+            self._rendered_stat_filter_state: Dict[str, Tuple[int, bool]] = {}
             self.visible_limit: int = PAGE_SIZE
             self.collapsed_lengths: Set[int] = set()
             self.collapsed_clever_groups: Set[int] = set()
@@ -1865,7 +2411,7 @@ def build_nicegui_app():
                 return
             entered_letters = sum(
                 1
-                for ch in self.form_letters
+                for ch in self.applied_query["available_letters"]
                 if ("a" <= ch.lower() <= "z") or ch in ("?", "*")
             )
             if entered_letters == 0:
@@ -1893,21 +2439,16 @@ def build_nicegui_app():
                 curse_count_label.set_text("")
                 curse_count_label.set_visibility(False)
 
-        def _update_stat_filter_controls(self) -> None:
+        def _build_stat_filter_controls(self) -> None:
             filter_container = self.stat_filter_container
             if filter_container is None:
                 return
             filter_container.clear()
+            self.stat_filter_widgets.clear()
+            self._rendered_stat_filter_state.clear()
             with filter_container:
-                for stat_key, label, active_bg, active_fg in STAT_FILTERS:
-                    count = self.stat_filter_counts.get(stat_key, 0)
-                    is_selected = stat_key in self.selected_stat_filters
-                    bg = (
-                        active_bg
-                        if is_selected
-                        else lighten_stat_filter_color(active_bg)
-                    )
-                    fg = active_fg if is_selected else "#263238"
+                for stat_key, label, active_bg, _active_fg in STAT_FILTERS:
+                    bg = lighten_stat_filter_color(active_bg)
                     button = (
                         ui.button(
                             on_click=lambda _e, key=stat_key: self.on_toggle_stat_filter(
@@ -1918,14 +2459,41 @@ def build_nicegui_app():
                         .classes("babble-stat-filter")
                         .style(
                             f"background-color: {bg} !important; "
-                            f"color: {fg} !important;"
+                            "color: #263238 !important;"
                         )
                     )
                     with button:
-                        ui.label(f"{count:,}").classes(
+                        count_label = ui.label("0").classes(
                             "babble-stat-filter-count"
                         )
                         ui.label(label).classes("babble-stat-filter-label")
+                    self.stat_filter_widgets[stat_key] = (button, count_label)
+                    self._rendered_stat_filter_state[stat_key] = (0, False)
+
+        def _update_stat_filter_controls(self) -> None:
+            if not self.stat_filter_widgets:
+                self._build_stat_filter_controls()
+                if not self.stat_filter_widgets:
+                    return
+            for stat_key, _label, active_bg, active_fg in STAT_FILTERS:
+                count = self.stat_filter_counts.get(stat_key, 0)
+                is_selected = stat_key in self.selected_stat_filters
+                new_state = (count, is_selected)
+                if self._rendered_stat_filter_state.get(stat_key) == new_state:
+                    continue
+                self._rendered_stat_filter_state[stat_key] = new_state
+                button, count_label = self.stat_filter_widgets[stat_key]
+                bg = (
+                    active_bg
+                    if is_selected
+                    else lighten_stat_filter_color(active_bg)
+                )
+                fg = active_fg if is_selected else "#263238"
+                button.style(
+                    f"background-color: {bg} !important; "
+                    f"color: {fg} !important;"
+                )
+                count_label.set_text(f"{count:,}")
 
         def _sync_kind_filter_controls(self) -> None:
             for kind, button in self.kind_buttons.items():
@@ -2018,10 +2586,10 @@ def build_nicegui_app():
         def _get_active_group_totals(self) -> Dict[Tuple[str, int], int]:
             totals: Dict[Tuple[str, int], int] = {}
             if self.clever_mode:
-                for combination in self.current_combinations:
-                    key = ("clever", len(combination))
-                    totals[key] = totals.get(key, 0) + 1
-                return totals
+                return {
+                    ("clever", word_count): len(items)
+                    for word_count, items in self.combinations_by_word_count.items()
+                }
 
             if not self.group_by_length:
                 return totals
@@ -2441,11 +3009,125 @@ def build_nicegui_app():
                 )
 
         # ---- Search & Render ----
+        def _cancel_pending_clever_search(self) -> None:
+            self._clever_search_generation += 1
+            if self._clever_cancel_event is not None:
+                self._clever_cancel_event.set()
+                self._clever_cancel_event = None
+            if self._clever_task is not None and not self._clever_task.done():
+                self._clever_task.cancel()
+            self._clever_task = None
+            self.clever_searching = False
+
+        def _set_combinations(
+            self,
+            combinations: List[Tuple[UnitRecord, ...]],
+            truncated: bool,
+        ) -> Dict[int, List[Tuple[UnitRecord, ...]]]:
+            grouped: Dict[int, List[Tuple[UnitRecord, ...]]] = {}
+            for combination in combinations:
+                grouped.setdefault(len(combination), []).append(combination)
+            self.current_combinations = combinations
+            self.combinations_by_word_count = grouped
+            self.combinations_truncated = truncated
+            return grouped
+
+        def _update_clever_result_count_label(self) -> None:
+            if self.lbl_result_count is None:
+                return
+            n = len(self.current_combinations)
+            noun = "combination" if n == 1 else "combinations"
+            if self.combinations_truncated:
+                self.lbl_result_count.set_text(
+                    f"{n:,}+ {noun} found (limit reached)"
+                )
+            else:
+                self.lbl_result_count.set_text(f"{n:,} {noun} found")
+
+        def _start_clever_search(
+            self,
+            matches: List[UnitRecord],
+            available_letters: str,
+            include_two_letter_words: bool,
+            clever_key: Tuple[Any, ...],
+        ) -> None:
+            generation = self._clever_search_generation
+            cancel_event = threading.Event()
+            self._clever_cancel_event = cancel_event
+            match_snapshot = list(matches)
+
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                combinations, truncated = find_exact_word_combinations(
+                    match_snapshot,
+                    available_letters,
+                    include_two_letter_words,
+                    cancel_event=cancel_event,
+                )
+                grouped = self._set_combinations(combinations, truncated)
+                self._cached_clever_key = clever_key
+                self._cached_clever_result = (combinations, grouped, truncated)
+                self._update_clever_result_count_label()
+                self._sync_group_collapse_button()
+                self._update_favorites_banner()
+                self._render_results()
+                return
+
+            self.clever_searching = True
+            self.current_combinations = []
+            self.combinations_by_word_count = {}
+            self.combinations_truncated = False
+
+            if self.lbl_result_count is not None:
+                self.lbl_result_count.set_text("Searching combinations...")
+            self._sync_group_collapse_button()
+            self._update_favorites_banner()
+            self._render_results()
+
+            async def worker() -> None:
+                try:
+                    combinations, truncated = await asyncio.to_thread(
+                        find_exact_word_combinations,
+                        match_snapshot,
+                        available_letters,
+                        include_two_letter_words,
+                        cancel_event=cancel_event,
+                    )
+                except asyncio.CancelledError:
+                    cancel_event.set()
+                    return
+
+                if (
+                    generation != self._clever_search_generation
+                    or not self.clever_mode
+                    or self.results_container is None
+                    or self.results_container.is_deleted
+                    or self.results_container.client.is_deleted
+                ):
+                    return
+
+                self.clever_searching = False
+                self._clever_cancel_event = None
+                self._clever_task = None
+                grouped = self._set_combinations(combinations, truncated)
+                self._cached_clever_key = clever_key
+                self._cached_clever_result = (combinations, grouped, truncated)
+                self._update_clever_result_count_label()
+                self._sync_group_collapse_button()
+                self._update_favorites_banner()
+                self._render_results()
+
+            self._clever_task = background_tasks.create(
+                worker(), name="clever-mode-search"
+            )
+
         def run_applied_search(self, reset_pagination: bool = True) -> None:
+            self._cancel_pending_clever_search()
             q = self.applied_query
             if not GLOBAL_DB.units:
                 self.current_matches = []
-                self.current_combinations = []
+                self._set_combinations([], False)
                 self.stat_filter_counts = {}
                 self.group_visible_limits.clear()
                 self._update_stat_filter_controls()
@@ -2465,7 +3147,7 @@ def build_nicegui_app():
             )
             if self.clever_mode and not clean_rack:
                 self.current_matches = []
-                self.current_combinations = []
+                self._set_combinations([], False)
                 self.stat_filter_counts = {}
                 self._update_stat_filter_controls()
                 if reset_pagination:
@@ -2489,35 +3171,63 @@ def build_nicegui_app():
                     else self.sort_by
                 )
             )
-            base_matches = GLOBAL_DB.search(
-                available_letters=q["available_letters"],
-                starts_with=q["starts_with"],
-                ends_with=q["ends_with"],
-                contains=q["contains"],
-                in_order=q["in_order"],
-                exact_amount=q["exact_amount"],
-                length_filter=q["length_filter"],
-                effect_filter=q["effect_filter"],
-                favorites_only=self.favorites_only,
-                favorites=self.favorites,
-                kind_filters=self.selected_kinds,
-                sort_by=base_sort_by,
-                descending=self.descending,
-                group_by_length=self.group_by_length,
-                include_two_letter_words=self.show_two_letter_words,
+            favorites_key = (
+                frozenset(self.favorites) if self.favorites_only else None
             )
+            base_key = (
+                GLOBAL_DB.revision,
+                q["available_letters"],
+                q["starts_with"],
+                q["ends_with"],
+                q["contains"],
+                q["in_order"],
+                q["exact_amount"],
+                q["length_filter"],
+                q["effect_filter"],
+                self.favorites_only,
+                favorites_key,
+                frozenset(self.selected_kinds),
+                base_sort_by,
+                self.descending,
+                self.group_by_length,
+                self.show_two_letter_words,
+            )
+            if base_key == self._cached_base_key:
+                base_matches = self._cached_base_matches
+                self.stat_filter_counts = dict(self._cached_stat_counts)
+            else:
+                base_matches = GLOBAL_DB.search(
+                    available_letters=q["available_letters"],
+                    starts_with=q["starts_with"],
+                    ends_with=q["ends_with"],
+                    contains=q["contains"],
+                    in_order=q["in_order"],
+                    exact_amount=q["exact_amount"],
+                    length_filter=q["length_filter"],
+                    effect_filter=q["effect_filter"],
+                    favorites_only=self.favorites_only,
+                    favorites=self.favorites,
+                    kind_filters=self.selected_kinds,
+                    sort_by=base_sort_by,
+                    descending=self.descending,
+                    group_by_length=self.group_by_length,
+                    include_two_letter_words=self.show_two_letter_words,
+                )
 
-            stat_counts = [0] * len(STAT_FILTERS)
-            for rec in base_matches:
-                mask = rec._positive_stat_mask
-                while mask:
-                    bit = mask & -mask
-                    stat_counts[bit.bit_length() - 1] += 1
-                    mask ^= bit
-            self.stat_filter_counts = {
-                stat_key: stat_counts[index]
-                for index, (stat_key, _, _, _) in enumerate(STAT_FILTERS)
-            }
+                stat_counts = [0] * len(STAT_FILTERS)
+                for rec in base_matches:
+                    mask = rec._positive_stat_mask
+                    while mask:
+                        bit = mask & -mask
+                        stat_counts[bit.bit_length() - 1] += 1
+                        mask ^= bit
+                self.stat_filter_counts = {
+                    stat_key: stat_counts[index]
+                    for index, (stat_key, _, _, _) in enumerate(STAT_FILTERS)
+                }
+                self._cached_base_key = base_key
+                self._cached_base_matches = base_matches
+                self._cached_stat_counts = dict(self.stat_filter_counts)
             self._update_stat_filter_controls()
 
             selected_stats = [
@@ -2545,15 +3255,6 @@ def build_nicegui_app():
                     )
 
             self.current_matches = matches
-            self.current_combinations = (
-                find_exact_word_combinations(
-                    matches,
-                    q["available_letters"],
-                    self.show_two_letter_words,
-                )
-                if self.clever_mode
-                else []
-            )
             if reset_pagination:
                 self.visible_limit = PAGE_SIZE
                 self.collapsed_lengths.clear()
@@ -2561,14 +3262,48 @@ def build_nicegui_app():
                 self.group_visible_limits.clear()
 
             if self.clever_mode:
-                n = len(self.current_combinations)
-                self.lbl_result_count.set_text(
-                    f"{n:,} combination{'s' if n != 1 else ''} found"
+                clever_key = (
+                    GLOBAL_DB.revision,
+                    q["available_letters"],
+                    q["starts_with"],
+                    q["ends_with"],
+                    q["contains"],
+                    q["in_order"],
+                    q["exact_amount"],
+                    q["length_filter"],
+                    q["effect_filter"],
+                    self.favorites_only,
+                    favorites_key,
+                    frozenset(self.selected_kinds),
+                    frozenset(self.selected_stat_filters),
+                    self.show_two_letter_words,
                 )
-            else:
-                n = len(matches)
-                word_lbl = "word" if n == 1 else "words"
-                self.lbl_result_count.set_text(f"{n:,} {word_lbl} found")
+                if (
+                    clever_key == self._cached_clever_key
+                    and self._cached_clever_result is not None
+                ):
+                    combos, grouped, truncated = self._cached_clever_result
+                    self.current_combinations = combos
+                    self.combinations_by_word_count = grouped
+                    self.combinations_truncated = truncated
+                    self._update_clever_result_count_label()
+                    self._sync_group_collapse_button()
+                    self._update_favorites_banner()
+                    self._render_results()
+                    return
+
+                self._start_clever_search(
+                    matches,
+                    q["available_letters"],
+                    self.show_two_letter_words,
+                    clever_key,
+                )
+                return
+
+            self._set_combinations([], False)
+            n = len(matches)
+            word_lbl = "word" if n == 1 else "words"
+            self.lbl_result_count.set_text(f"{n:,} {word_lbl} found")
             self._sync_group_collapse_button()
             self._update_favorites_banner()
             self._render_results()
@@ -2595,6 +3330,15 @@ def build_nicegui_app():
 
             with self.results_container:
                 if self.clever_mode:
+                    if self.clever_searching:
+                        with ui.row().classes(
+                            "w-full items-center justify-center gap-2 py-10"
+                        ):
+                            ui.spinner(size="sm", color="#795548")
+                            ui.label("Searching combinations...").classes(
+                                "text-sm font-bold"
+                            ).style("color: #595959;")
+                        return
                     if not self.current_combinations:
                         with ui.column().classes("w-full items-center py-10"):
                             ui.label("No combinations found.").classes(
@@ -2706,14 +3450,13 @@ def build_nicegui_app():
                             ).props("unelevated dense").classes("babble-pill-blue px-4")
 
         def _render_clever_results(self) -> None:
-            combinations_by_word_count: Dict[
-                int, List[Tuple[UnitRecord, ...]]
-            ] = {}
-            for combination in self.current_combinations:
-                combinations_by_word_count.setdefault(
-                    len(combination), []
-                ).append(combination)
+            if self.combinations_truncated:
+                ui.label(
+                    f"Showing the first {len(self.current_combinations):,} combinations "
+                    "(shortest word counts first). Add more filters to narrow results."
+                ).classes("text-xs font-bold pb-1").style("color: #795548;")
 
+            combinations_by_word_count = self.combinations_by_word_count
             group_count = len(combinations_by_word_count)
             for word_count in sorted(combinations_by_word_count):
                 group_key = ("clever", word_count)
@@ -3566,8 +4309,30 @@ def build_nicegui_app():
             )
 
         # ---- Main Page Layout ----
+        def _sync_db_file_statuses(self) -> None:
+            self._set_settings_file_status(
+                "units",
+                GLOBAL_DB.source_size_bytes,
+                bool(GLOBAL_DB.source_path and GLOBAL_DB._base_records),
+            )
+            self._set_settings_file_status(
+                "cursed",
+                GLOBAL_DB.extra_source_size_bytes,
+                bool(
+                    GLOBAL_DB.extra_source_path
+                    and any(
+                        record.is_cursed for record in GLOBAL_DB._extra_records
+                    )
+                ),
+            )
+            self._set_settings_file_status(
+                "blacklist",
+                GLOBAL_DB.blacklist_size_bytes,
+                GLOBAL_DB.blacklist_loaded,
+            )
+
         def build(self) -> None:
-            ui.add_head_html(CUSTOM_CSS)
+            ui.add_head_html(get_custom_css())
             self._build_settings_dialog()
             assert self.settings_dialog is not None
 
@@ -3868,13 +4633,44 @@ def build_nicegui_app():
                     self.stat_filter_container = ui.row().classes(
                         "w-full items-center gap-1 flex-wrap"
                     )
+                    self._build_stat_filter_controls()
 
                     ui.separator().style("background-color: #C8C8C8;")
 
                     self.results_container = ui.column().classes("w-full gap-1.5")
 
-            # Perform initial render of loaded units
-            self.run_applied_search(reset_pagination=True)
+            ui.context.client.on_delete(self._cancel_pending_clever_search)
+
+            # Perform initial render immediately if loaded, otherwise wait asynchronously.
+            if not _DB_AUTOLOAD_STARTED or DB_LOAD_EVENT.is_set():
+                self.run_applied_search(reset_pagination=True)
+            else:
+                if self.lbl_result_count is not None:
+                    self.lbl_result_count.set_text("Loading word database...")
+                with self.results_container:
+                    with ui.row().classes(
+                        "w-full items-center justify-center gap-2 py-10"
+                    ):
+                        ui.spinner(size="sm", color="#FF5604")
+                        ui.label("Loading word database...").classes(
+                            "text-sm font-bold"
+                        ).style("color: #595959;")
+
+                async def _finish_initial_load() -> None:
+                    await asyncio.to_thread(DB_LOAD_EVENT.wait)
+                    if (
+                        self.results_container is None
+                        or self.results_container.is_deleted
+                        or self.results_container.client.is_deleted
+                    ):
+                        return
+                    self._sync_db_file_statuses()
+                    self._refresh_dynamic_dropdowns()
+                    self.run_applied_search(reset_pagination=True)
+
+                background_tasks.create(
+                    _finish_initial_load(), name="babble-finish-initial-load"
+                )
 
     @ui.page("/")
     def index_page():
@@ -4070,28 +4866,53 @@ def _init_native_titlebar() -> None:
         attach_subclass()
 
 
+def _is_address_available(host: str, port: int) -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            sock.bind((host, port))
+            return True
+    except OSError:
+        return False
+
+
+def find_available_server_address(
+    preferred_hosts: Tuple[str, ...] = ("127.0.0.1", "127.0.0.2", "127.0.0.3"),
+    start_port: int = 8080,
+    end_port: int = 8999,
+) -> Tuple[str, int]:
+    """Return an unused local (host, port) pair so multiple windows can run simultaneously."""
+    for host in preferred_hosts:
+        for port in range(start_port, end_port + 1):
+            if _is_address_available(host, port):
+                return host, port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((preferred_hosts[0], 0))
+        return preferred_hosts[0], int(sock.getsockname()[1])
+
+
 def main():
     from nicegui import app
 
-    loaded = autoload_database()
-    if loaded:
-        print(f"Loaded {len(GLOBAL_DB.units):,} units from {loaded}")
-    else:
-        print("No units.json found automatically — use the settings menu to load files.")
-
     ui = build_nicegui_app()
+    app.on_startup(start_autoload_in_background)
     app.native.window_args["min_size"] = (980, 860)
     app.native.window_args["background_color"] = _TITLEBAR_BG_HEX
     app.native.start_args["func"] = _init_native_titlebar
 
+    host, port = find_available_server_address()
     ui.run(
         title="Towers of Babble — Word Finder",
+        host=host,
+        port=port,
         reload=False,
         native=True,
         window_size=(980, 860),
-        port=8080,
+        show_welcome_message=False,
     )
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()
