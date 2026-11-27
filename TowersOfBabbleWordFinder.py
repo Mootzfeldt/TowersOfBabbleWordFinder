@@ -176,7 +176,7 @@ STAT_FILTERS: List[Tuple[str, str, str, str]] = [
     ("slow_aura", "SLOW AURA", "#155FD2", "#FFFFFF"),
     ("burn_aura", "BURN AURA", "#C22727", "#FFFFFF"),
     ("harvest_amount", "HARVEST AMOUNT", "#457024", "#FFFFFF"),
-    ("harvest_speed", "HARVEST INTERVAL", "#4E6E2F", "#FFFFFF"),
+    ("harvest_speed", "HARVEST SPEED", "#4E6E2F", "#FFFFFF"),
     ("multi_harvest", "MULTI HARVEST", "#2A732E", "#FFFFFF"),
     ("harvest_aura", "HARVEST AURA", "#237429", "#FFFFFF"),
     ("curse", "CURSE", "#962AD7", "#FFFFFF"),
