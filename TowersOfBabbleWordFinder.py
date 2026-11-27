@@ -180,7 +180,14 @@ STAT_FILTERS: List[Tuple[str, str, str, str]] = [
     ("multi_harvest", "MULTI HARVEST", "#2A732E", "#FFFFFF"),
     ("harvest_aura", "HARVEST AURA", "#237429", "#FFFFFF"),
     ("curse", "CURSE", "#962AD7", "#FFFFFF"),
+    ("dps", "DPS", "#B71C1C", "#FFFFFF"),
 ]
+STAT_FILTER_TOOLTIPS: Dict[str, str] = {
+    "dps": (
+        "Not a stat found in the game — an approximation based on "
+        "Damage, Attack Speed, and Crit."
+    ),
+}
 STAT_FILTER_BITS: Dict[str, int] = {
     stat_key: 1 << index
     for index, (stat_key, _, _, _) in enumerate(STAT_FILTERS)
@@ -194,6 +201,7 @@ _KIND_LOOKUP: Dict[str, str] = {
     "MODIFIER_ACTION": "MOD",
 }
 _BIT_DAMAGE = STAT_FILTER_BITS["damage"]
+_BIT_DPS = STAT_FILTER_BITS["dps"]
 _BIT_ATTACK_SPEED = STAT_FILTER_BITS["attack_speed"]
 _BIT_TOUGHNESS = STAT_FILTER_BITS["toughness"]
 _BIT_ARMOR = STAT_FILTER_BITS["armor"]
@@ -201,7 +209,9 @@ _BIT_RANGE = STAT_FILTER_BITS["range"]
 _BIT_HARVEST_AMOUNT = STAT_FILTER_BITS["harvest_amount"]
 _BIT_HARVEST_SPEED = STAT_FILTER_BITS["harvest_speed"]
 _BIT_CURSE = STAT_FILTER_BITS["curse"]
+_TOWER_DEFAULT_DPS = 5.5
 _TOWER_DMG_POS = TOWER_DEFAULTS["damage"] + 0.01
+_TOWER_DPS_POS = _TOWER_DEFAULT_DPS + 0.01
 _TOWER_SPD_POS = TOWER_DEFAULTS["attackSpeed"] + 0.01
 _TOWER_HP_TAG = TOWER_DEFAULTS["health"] + 0.1
 _TOWER_HP_POS = TOWER_DEFAULTS["health"] + 0.01
@@ -304,6 +314,31 @@ def consume_word_letters(available_letters: str, word: str) -> Tuple[str, int]:
 
 
 # User Data Persistence (user_data.json)
+DEFAULT_DICTIONARY_URL = "https://onelook.com/?w="
+
+
+def normalize_dictionary_url(raw_url: Any) -> str:
+    if not isinstance(raw_url, str):
+        return DEFAULT_DICTIONARY_URL
+    cleaned = raw_url.strip().replace('"', "").replace("'", "")
+    if not cleaned:
+        return DEFAULT_DICTIONARY_URL
+    lower = cleaned.lower()
+    if lower.startswith(("http://", "https://")):
+        return cleaned
+    if "://" in cleaned or lower.startswith("javascript:"):
+        return DEFAULT_DICTIONARY_URL
+    return f"https://{cleaned}"
+
+
+def build_definition_url(base_url: str, word: str) -> str:
+    cleaned = normalize_dictionary_url(base_url)
+    encoded = quote_plus(word)
+    if "{word}" in cleaned:
+        return cleaned.replace("{word}", encoded)
+    return f"{cleaned}{encoded}"
+
+
 def resolve_user_data_path() -> Path:
     if getattr(sys, "frozen", False):
         app_dir = Path(sys.executable).resolve().parent
@@ -344,6 +379,9 @@ def normalize_user_data(data: Any) -> Dict[str, Any]:
     normalized.setdefault("version", 1)
     normalized["favorites"] = sorted(
         {word.strip().lower() for word in favorites if word.strip()}
+    )
+    normalized["dictionary_url"] = normalize_dictionary_url(
+        data.get("dictionary_url", DEFAULT_DICTIONARY_URL)
     )
     return normalized
 
@@ -589,6 +627,9 @@ class UnitRecord:
                         crit_stat = val
                         break
                 dps = damage * attacks_per_second * (1.1 + 0.007 * crit_stat)
+                base_covered_mask |= _BIT_DPS
+                if dps > _TOWER_DPS_POS:
+                    pos_mask |= _BIT_DPS
 
             raw_deltas = get("deltas")
             if raw_deltas:
@@ -762,6 +803,8 @@ class UnitRecord:
     def _base_stat_change(self, stat_key: str) -> Optional[float]:
         if stat_key == "damage" and self.kind == "TOWER" and self.damage is not None:
             return self.damage - TOWER_DEFAULTS["damage"]
+        if stat_key == "dps" and self.kind == "TOWER" and self.dps is not None:
+            return self.dps - _TOWER_DEFAULT_DPS
         if stat_key == "attack_speed" and self.kind == "TOWER" and self.attack_speed is not None:
             return self.attack_speed - TOWER_DEFAULTS["attackSpeed"]
         if stat_key in ("toughness", "health") and self.kind in ("TOWER", "HARVESTER") and self.health is not None:
@@ -901,7 +944,7 @@ class UnitRecord:
             tone = "pos" if (self.kind == "MOD" or val > 5.01) else ("neg" if val < 4.99 else "neutral")
             return (f"{'+' if self.kind == 'MOD' else ''}{fmt_num(val, 1)}", "Damage", tone)
         if stat_key == "dps":
-            tone = "pos" if val > 5.01 else ("neg" if val < 4.99 else "neutral")
+            tone = "pos" if val > _TOWER_DPS_POS else ("neg" if val < _TOWER_DEFAULT_DPS - 0.01 else "neutral")
             return (fmt_num(val, 1), "DPS", tone)
         if stat_key == "attack_speed":
             if self.kind == "TOWER":
@@ -2220,7 +2263,11 @@ def build_nicegui_app():
     class FinderSession:
         def __init__(self):
             self.user_data_path = resolve_user_data_path()
-            self.user_data: Dict[str, Any] = {"version": 1, "favorites": []}
+            self.user_data: Dict[str, Any] = {
+                "version": 1,
+                "favorites": [],
+                "dictionary_url": DEFAULT_DICTIONARY_URL,
+            }
             self.user_data_source = ""
             self.user_data_size_bytes: Optional[int] = None
             self.user_data_loaded = False
@@ -2254,6 +2301,9 @@ def build_nicegui_app():
                         print(f"Could not migrate {legacy_path.name}: {exc}")
 
             self.favorites: Set[str] = set(self.user_data["favorites"])
+            self.dictionary_url: str = normalize_dictionary_url(
+                self.user_data.get("dictionary_url", DEFAULT_DICTIONARY_URL)
+            )
 
             # Deferred form state (only applied when Find Words / Clear / Use is pressed)
             self.form_letters: str = ""
@@ -2341,6 +2391,7 @@ def build_nicegui_app():
             self.stat_filter_container = None
             self.results_container = None
             self.settings_dialog = None
+            self.inp_dictionary_url = None
             self.settings_file_labels: Dict[str, Any] = {}
             self.settings_upload_boxes: Dict[str, Any] = {}
             def file_status(loaded: bool, size_bytes: Optional[int]):
@@ -2513,6 +2564,9 @@ def build_nicegui_app():
                             "babble-stat-filter-count"
                         )
                         ui.label(label).classes("babble-stat-filter-label")
+                    tooltip_text = STAT_FILTER_TOOLTIPS.get(stat_key)
+                    if tooltip_text:
+                        button.tooltip(tooltip_text)
                     self.stat_filter_widgets[stat_key] = (button, count_label)
                     self._rendered_stat_filter_state[stat_key] = (0, False)
 
@@ -2804,23 +2858,34 @@ def build_nicegui_app():
                     ).props("unelevated dense").classes("babble-pill-blue px-4")
 
         def _get_length_options(self) -> Dict[str, str]:
-            # Reordered: All lengths, 15, 14, 13, ... down to 2
+            # Reordered: All lengths, 15, 14, 13, ... down to 3 (or 2 when enabled)
             max_l = max(GLOBAL_DB.max_len, 15)
+            min_l = 2 if self.show_two_letter_words else 3
             opts: Dict[str, str] = {"ALL": "All lengths"}
-            for n in range(max_l, 1, -1):
+            for n in range(max_l, min_l - 1, -1):
                 opts[str(n)] = f"{n} letters"
             return opts
 
-        def _refresh_dynamic_dropdowns(self) -> None:
+        def _sync_length_options(self) -> None:
+            if self.sel_length is None:
+                return
+            len_opts = self._get_length_options()
+            prev_suppress = self._suppress_events
             self._suppress_events = True
             try:
-                len_opts = self._get_length_options()
                 self.sel_length.options = len_opts
                 if self.form_length not in len_opts:
                     self.form_length = "ALL"
                     self.sel_length.value = "ALL"
+                    self.applied_query["length_filter"] = None
                 self.sel_length.update()
+            finally:
+                self._suppress_events = prev_suppress
 
+        def _refresh_dynamic_dropdowns(self) -> None:
+            self._sync_length_options()
+            self._suppress_events = True
+            try:
                 eff_opts = GLOBAL_DB.get_ordered_effect_options()
                 self.sel_effect.options = eff_opts
                 if self.form_effect not in eff_opts:
@@ -2894,6 +2959,8 @@ def build_nicegui_app():
             self._sync_pill_style(
                 self.btn_two_letter_words, self.show_two_letter_words
             )
+            self._sync_length_options()
+            self._update_pending_indicator()
             self.run_applied_search(reset_pagination=True)
 
         def on_toggle_clever_mode(self) -> None:
@@ -3014,6 +3081,7 @@ def build_nicegui_app():
                 self.inp_starts.value = ""
                 self.inp_ends.value = ""
                 self.sel_length.value = "ALL"
+                self._sync_length_options()
                 self.sel_effect.value = ""
                 self.sel_order.value = "Descending"
                 self._sync_kind_filter_controls()
@@ -3800,16 +3868,18 @@ def build_nicegui_app():
                                         ),
                                     )
 
-                                    def_url = f"https://onelook.com/?w={quote_plus(rec.word)}"
+                                    def_url = build_definition_url(
+                                        self.dictionary_url, rec.word
+                                    )
                                     def_btn = (
-                                        ui.button("DEF")
+                                        ui.button("DEFINITION")
                                         .props(
                                             f'unelevated dense href="{def_url}" target="_blank"'
                                         )
                                         .classes("babble-mini-use")
                                     )
                                     def_btn.tooltip(
-                                        f"Open OneLook definition for '{rec.word}'"
+                                        f"Open definition for '{rec.word}'"
                                     )
                                     def_btn.on("click.stop", lambda _e: None)
 
@@ -3972,15 +4042,17 @@ def build_nicegui_app():
                                 lambda _e, w=rec.word: self.on_use_word(w),
                             )
 
-                            def_url = f"https://onelook.com/?w={quote_plus(rec.word)}"
+                            def_url = build_definition_url(
+                                self.dictionary_url, rec.word
+                            )
                             def_btn = (
-                                ui.button("DEF")
+                                ui.button("DEFINITION")
                                 .props(
                                     f'unelevated dense href="{def_url}" target="_blank"'
                                 )
                                 .classes("babble-mini-use")
                             )
-                            def_btn.tooltip(f"Open OneLook definition for '{rec.word}'")
+                            def_btn.tooltip(f"Open definition for '{rec.word}'")
                             def_btn.on("click.stop", lambda _e: None)
 
                         # Rightmost stack: [PTS tile] on top, [X letters] directly below PTS
@@ -4297,15 +4369,92 @@ def build_nicegui_app():
                 add_file_loader(
                     "user_data",
                     "USER DATA JSON",
-                    "A file for storing your favorite words. Should be missing if this is the first time you have opened the program, will be made when you favorite a word.",
+                    "A file for storing your favorite words and custom settings (such as your dictionary link). Should be missing if this is the first time you have opened the program, will be made when you favorite a word or save settings.",
                     ".json",
                     self._handle_user_data_upload,
                 )
+
+                with ui.column().classes("w-full gap-1"):
+                    ui.label("DICTIONARY LINK").classes(
+                        "text-xs font-bold"
+                    ).style("color: #222222;")
+                    ui.label(
+                        "Paste the query link of any dictionary website you want the DEFINITION button to use. "
+                        "The searched word is added to the end of the link (or replaces {word} if included). "
+                        "Leave blank or click DEFAULT to use OneLook (https://onelook.com/?w=). "
+                        "Other examples: https://www.google.com/search?q= or https://en.wiktionary.org/wiki/."
+                    ).classes("text-xs leading-relaxed").style(
+                        "color: #595959;"
+                    )
+                    with ui.row().classes(
+                        "w-full items-center gap-2 no-wrap"
+                    ):
+                        self.inp_dictionary_url = (
+                            ui.input(
+                                value=self.dictionary_url,
+                                placeholder=DEFAULT_DICTIONARY_URL,
+                            )
+                            .props("outlined dense")
+                            .classes("flex-grow babble-input")
+                        )
+                        self.inp_dictionary_url.on(
+                            "keydown.enter",
+                            lambda _e: self._save_dictionary_url(),
+                        )
+                        ui.button(
+                            "SAVE", on_click=self._save_dictionary_url
+                        ).props("unelevated dense").classes(
+                            "babble-pill-blue px-4 h-9 text-xs"
+                        )
+                        ui.button(
+                            "DEFAULT", on_click=self._reset_dictionary_url
+                        ).props("unelevated dense").classes(
+                            "babble-pill px-3 h-9 text-xs"
+                        )
+                ui.separator().style("background-color: #C4C4C4;")
 
                 with ui.row().classes("w-full justify-end mt-2"):
                     ui.button("CLOSE", on_click=self.settings_dialog.close).props(
                         "unelevated dense"
                     ).classes("babble-pill px-4")
+
+        def _persist_dictionary_url(self, raw_url: str, notify_msg: str) -> None:
+            normalized = normalize_dictionary_url(raw_url)
+            self.dictionary_url = normalized
+            self.user_data["dictionary_url"] = normalized
+            if self.inp_dictionary_url is not None:
+                self.inp_dictionary_url.value = normalized
+            try:
+                save_user_data_json(self.user_data_path, self.user_data)
+                self.user_data_source = self.user_data_path.name
+                self.user_data_size_bytes = self.user_data_path.stat().st_size
+                self.user_data_loaded = True
+                self._set_settings_file_status(
+                    "user_data",
+                    self.user_data_size_bytes,
+                    self.user_data_loaded,
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                ui.notify(f"Could not save dictionary link: {exc}", type="negative")
+            self._render_results()
+            ui.notify(notify_msg, type="positive", position="bottom-right", timeout=2200)
+
+        def _save_dictionary_url(self) -> None:
+            raw = (
+                str(self.inp_dictionary_url.value or "")
+                if self.inp_dictionary_url is not None
+                else DEFAULT_DICTIONARY_URL
+            )
+            normalized = normalize_dictionary_url(raw)
+            self._persist_dictionary_url(
+                normalized, f"Dictionary link saved: {normalized}"
+            )
+
+        def _reset_dictionary_url(self) -> None:
+            self._persist_dictionary_url(
+                DEFAULT_DICTIONARY_URL,
+                f"Dictionary link reset to default ({DEFAULT_DICTIONARY_URL})",
+            )
 
         def _refresh_after_file_change(self) -> None:
             self._refresh_dynamic_dropdowns()
@@ -4430,6 +4579,9 @@ def build_nicegui_app():
 
             self.user_data = data
             self.favorites = set(data["favorites"])
+            self.dictionary_url = data["dictionary_url"]
+            if self.inp_dictionary_url is not None:
+                self.inp_dictionary_url.value = self.dictionary_url
             self.user_data_source = e.name
             self.user_data_size_bytes = len(raw_bytes)
             self.user_data_loaded = True
