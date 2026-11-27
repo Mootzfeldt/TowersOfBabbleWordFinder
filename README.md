@@ -16,4 +16,7 @@ py -m PyInstaller --onefile --windowed --icon=icon.ico TowersOfBabbleWordFinder.
 ```
 
 ## Open Source
-This is my first time publishing a repository publically and I am still in the process of learning. If you see anything wrong you are welcome to suggest/edit.
+This is my first time publishing a repository publically and I am still in the process of learning. If you see anything wrong you are welcome to suggest/edit. I want this to be open source and I am very open to new features and bug fixes. The only thing is that I want it to match my design goals for the program, which are:
+- Runs locally and does not connect to the internet, with the exception of an (optional) dictionary definition of words upon requesting it. (currently a button that opens a link, though I want to look into a different approach.)
+- Simple to use, but not lacking in ability to do advanced searches.
+- Functional code. I do not mind code being written by AI, as long as it works and does not slow the program down or make it unusable. This is not a big or important project and is just something I personally wanted while playing the game. Though if it can be beneficial to other people, great!
