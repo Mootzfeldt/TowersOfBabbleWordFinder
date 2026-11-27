@@ -2892,7 +2892,7 @@ def build_nicegui_app():
             self._update_pending_indicator()
             self.run_applied_search(reset_pagination=True)
 
-        def on_clear(self) -> None:
+        def on_reset(self) -> None:
             self._suppress_events = True
             try:
                 self.form_letters = ""
@@ -2903,9 +2903,16 @@ def build_nicegui_app():
                 self.form_effect = ""
                 self.form_in_order = False
                 self.form_exact_amount = False
+
+                self.selected_kinds = {"TOWER", "HARVESTER", "MOD"}
+                self.sort_by = "points"
+                self.sort_mode = "value"
+                self.descending = True
+                self.group_by_length = False
+                self.show_two_letter_words = False
+                self.clever_mode = False
                 self.favorites_only = False
                 self.selected_stat_filters.clear()
-                self.sort_by = "points"
 
                 self.inp_letters.value = ""
                 self.inp_contains.value = ""
@@ -2913,6 +2920,12 @@ def build_nicegui_app():
                 self.inp_ends.value = ""
                 self.sel_length.value = "ALL"
                 self.sel_effect.value = ""
+                self.sel_order.value = "Descending"
+                self._sync_kind_filter_controls()
+                self._sync_sort_mode_button()
+                self._sync_pill_style(self.btn_group, False)
+                self._sync_pill_style(self.btn_two_letter_words, False)
+                self._sync_clever_mode_button()
                 self._sync_pill_style(self.btn_in_order, False)
                 self._sync_pill_style(self.btn_exact, False)
                 self._sync_favorite_style(False)
@@ -4369,7 +4382,7 @@ def build_nicegui_app():
 
                 # ---- CONTROLS PANEL ----
                 with ui.column().classes("w-full babble-panel gap-3"):
-                    # Row 1: Available Letters + Find Words + Clear
+                    # Row 1: Available Letters + Find Words + Reset
                     with ui.column().classes("w-full gap-1"):
                         with ui.row().classes("w-full items-center gap-2 flex-wrap"):
                             ui.label("AVAILABLE LETTERS").classes("babble-field-lbl")
@@ -4402,7 +4415,7 @@ def build_nicegui_app():
                                 "FIND WORDS", on_click=self.on_find_words
                             ).props("unelevated").classes("babble-pill-blue px-5 h-10")
 
-                            ui.button("CLEAR", on_click=self.on_clear).props(
+                            ui.button("RESET", on_click=self.on_reset).props(
                                 "unelevated"
                             ).classes("babble-pill babble-pill-blue-border px-4 h-10")
 
