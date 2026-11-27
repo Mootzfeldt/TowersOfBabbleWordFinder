@@ -22,21 +22,25 @@ KIND_META = {
     "TOWER": {
         "display": "tower",
         "color": "#FF5604",       # Orange
+        "button_color": "#C84300",
         "soft_bg": "#FFE7DA",
     },
     "MOD": {
         "display": "mod",
         "color": "#e858a8",       # Pink
+        "button_color": "#BE2F7F",
         "soft_bg": "#F8DDF0",
     },
     "HARVESTER": {
         "display": "harvester",
         "color": "#1E7D32",       # Green
+        "button_color": "#1B702D",
         "soft_bg": "#DCF0DF",
     },
     "CURSED": {
         "display": "cursed",
         "color": "#6e13be",       # Purple
+        "button_color": "#6e13be",
         "soft_bg": "#E7D5F5",
     },
 }
@@ -2502,15 +2506,11 @@ def build_nicegui_app():
 
         def _sync_kind_filter_controls(self) -> None:
             for kind, button in self.kind_buttons.items():
-                color = KIND_META[kind]["color"]
+                color = KIND_META[kind]["button_color"]
                 selected = kind in self.selected_kinds
                 background = color if selected else "#DCDCDC"
                 border = color
-                foreground = (
-                    "#FFFFFF"
-                    if selected and kind == "HARVESTER"
-                    else "#263238"
-                )
+                foreground = "#FFFFFF" if selected else "#263238"
                 button.style(
                     f"background-color: {background} !important; "
                     f"border-color: {border} !important; "
